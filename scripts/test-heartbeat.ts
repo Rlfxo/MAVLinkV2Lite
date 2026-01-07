@@ -59,9 +59,9 @@ function getStateString(state: number): string {
 }
 
 async function main() {
-  log('\n╔═══════════════════════════════════════════════════════════╗', colors.cyan);
-  log('║         MAVLink V2 Lite Heartbeat Test Tool             ║', colors.cyan);
-  log('╚═══════════════════════════════════════════════════════════╝\n', colors.cyan);
+  log('\n=============================================================', colors.cyan);
+  log('         MAVLink V2 Lite Heartbeat Test Tool               ', colors.cyan);
+  log('=============================================================\n', colors.cyan);
 
   // Get port from command line or auto-detect
   let portPath = process.argv[2];
@@ -70,15 +70,15 @@ async function main() {
 
   try {
     // List available ports
-    log('📡 Scanning for serial ports...', colors.blue);
+    log('[SCAN] Scanning for serial ports...', colors.blue);
     const ports = await SerialPortManager.listPorts();
 
     if (ports.length === 0) {
-      log('❌ No serial ports found!', colors.red);
+      log('[ERROR] No serial ports found!', colors.red);
       process.exit(1);
     }
 
-    log(`\n✅ Found ${ports.length} port(s):`, colors.green);
+    log(`\n[INFO] Found ${ports.length} port(s):`, colors.green);
     ports.forEach((port, index) => {
       const info = [
         port.path,
@@ -92,15 +92,15 @@ async function main() {
     // Auto-select if not specified
     if (!portPath) {
       portPath = ports[0].path;
-      log(`\n🔌 Auto-selected: ${portPath}`, colors.yellow);
+      log(`\n[AUTO] Auto-selected: ${portPath}`, colors.yellow);
     } else {
-      log(`\n🔌 Using specified port: ${portPath}`, colors.yellow);
+      log(`\n[PORT] Using specified port: ${portPath}`, colors.yellow);
     }
 
     // Connect to port
-    log('\n⏳ Connecting...', colors.blue);
+    log('\n[CONNECT] Connecting...', colors.blue);
     await serialManager.connect(portPath);
-    log(`✅ Connected to ${portPath} (115200 baud, 8N1)`, colors.green);
+    log(`[OK] Connected to ${portPath} (115200 baud, 8N1)`, colors.green);
 
     // Create heartbeat manager
     const heartbeatManager = new HeartbeatManager(serialManager);
@@ -108,7 +108,7 @@ async function main() {
     // Setup event handlers
     heartbeatManager.on('heartbeat-sent', (seq) => {
       const status = heartbeatManager.getStatus();
-      log(`📤 TX Heartbeat #${seq} (sent: ${status.heartbeatsSent})`, colors.dim);
+      log(`[TX] Heartbeat #${seq} (total sent: ${status.heartbeatsSent})`, colors.dim);
     });
 
     heartbeatManager.on('heartbeat-received', (payload, message) => {
@@ -117,35 +117,35 @@ async function main() {
       const color = payload.systemStatus === MAV_STATE.ACTIVE ? colors.green : colors.yellow;
 
       log(
-        `📥 RX Heartbeat from SYS:${message.sysid} COMP:${message.compid} ` +
+        `[RX] Heartbeat from SYS:${message.sysid} COMP:${message.compid} ` +
         `SEQ:${message.seq} STATE:${state} TYPE:${payload.type} ` +
-        `(received: ${status.heartbeatsReceived})`,
+        `(total received: ${status.heartbeatsReceived})`,
         color
       );
     });
 
     heartbeatManager.on('connection-established', () => {
-      log('\n🎉 ✅ CONNECTION ESTABLISHED!\n', colors.bright + colors.green);
+      log('\n[CONNECTED] Connection established!\n', colors.bright + colors.green);
     });
 
     heartbeatManager.on('connection-lost', () => {
-      log('\n⚠️  CONNECTION LOST (no heartbeat for 3s)\n', colors.yellow);
+      log('\n[TIMEOUT] Connection lost (no heartbeat for 3s)\n', colors.yellow);
     });
 
     heartbeatManager.on('heartbeat-timeout', () => {
-      log('⏰ Heartbeat timeout', colors.red);
+      log('[TIMEOUT] Heartbeat timeout', colors.red);
     });
 
     serialManager.on('error', (error) => {
-      log(`❌ Serial error: ${error.message}`, colors.red);
+      log(`[ERROR] Serial error: ${error.message}`, colors.red);
     });
 
     serialManager.on('close', () => {
-      log('\n🔌 Serial port closed', colors.yellow);
+      log('\n[CLOSE] Serial port closed', colors.yellow);
     });
 
     // Start heartbeat
-    log('\n🚀 Starting heartbeat (1Hz TX, monitoring RX)...\n', colors.bright + colors.blue);
+    log('\n[START] Starting heartbeat (1Hz TX, monitoring RX)...\n', colors.bright + colors.blue);
     heartbeatManager.start();
 
     // Status display interval
@@ -154,9 +154,12 @@ async function main() {
       const serialStatus = serialManager.getStatus();
       const parserStats = heartbeatManager.getParserStats();
 
-      console.log(colors.dim + '─'.repeat(60) + colors.reset);
-      log('📊 STATUS', colors.bright);
-      console.log(`   Connection:     ${hbStatus.isConnected ? colors.green + '●' : colors.red + '○'} ${hbStatus.isConnected ? 'CONNECTED' : 'DISCONNECTED'}${colors.reset}`);
+      console.log(colors.dim + '-'.repeat(70) + colors.reset);
+      log('STATUS REPORT', colors.bright);
+
+      const connStatus = hbStatus.isConnected ? 'CONNECTED' : 'DISCONNECTED';
+      const connColor = hbStatus.isConnected ? colors.green : colors.red;
+      console.log(`   Connection:     ${connColor}${connStatus}${colors.reset}`);
       console.log(`   Heartbeats:     TX: ${hbStatus.heartbeatsSent}  RX: ${hbStatus.heartbeatsReceived}`);
       console.log(`   Last RX:        ${hbStatus.lastHeartbeatTime ? formatTime(hbStatus.lastHeartbeatTime) : 'Never'} (${hbStatus.timeSinceLastHeartbeat ? formatDuration(hbStatus.timeSinceLastHeartbeat) + ' ago' : 'N/A'})`);
       console.log(`   Parser:         Total: ${parserStats.totalRxCount}  CRC Errors: ${parserStats.crcErrorCount}  Parse Errors: ${parserStats.parseErrorCount}`);
@@ -165,12 +168,20 @@ async function main() {
       if (hbStatus.lastHeartbeat) {
         console.log(`   Remote Status:  ${getStateString(hbStatus.lastHeartbeat.systemStatus)} (Type: ${hbStatus.lastHeartbeat.type})`);
       }
-      console.log(colors.dim + '─'.repeat(60) + colors.reset);
+
+      if (!hbStatus.isConnected && hbStatus.heartbeatsSent > 0) {
+        log('   NOTE: TX is working but no RX from board. Check:', colors.yellow);
+        log('         1. Board is sending heartbeats', colors.yellow);
+        log('         2. UART wiring (TX<->RX crossover)', colors.yellow);
+        log('         3. Board baud rate (115200 8N1)', colors.yellow);
+      }
+
+      console.log(colors.dim + '-'.repeat(70) + colors.reset);
     }, 5000); // Status every 5 seconds
 
     // Graceful shutdown
     const shutdown = async () => {
-      log('\n\n🛑 Shutting down...', colors.yellow);
+      log('\n\n[SHUTDOWN] Shutting down...', colors.yellow);
       clearInterval(statusInterval);
       heartbeatManager.stop();
 
@@ -178,7 +189,7 @@ async function main() {
         await serialManager.disconnect();
       }
 
-      log('👋 Goodbye!\n', colors.cyan);
+      log('[EXIT] Goodbye!\n', colors.cyan);
       process.exit(0);
     };
 
@@ -186,13 +197,13 @@ async function main() {
     process.on('SIGTERM', shutdown);
 
     // Keep process alive
-    log('💡 Press Ctrl+C to exit\n', colors.dim);
+    log('[INFO] Press Ctrl+C to exit\n', colors.dim);
 
   } catch (error) {
     if (error instanceof Error) {
-      log(`\n❌ Error: ${error.message}`, colors.red);
+      log(`\n[ERROR] ${error.message}`, colors.red);
     } else {
-      log(`\n❌ Unknown error: ${error}`, colors.red);
+      log(`\n[ERROR] Unknown error: ${error}`, colors.red);
     }
     process.exit(1);
   }

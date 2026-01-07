@@ -88,34 +88,57 @@ npm run test:heartbeat COM3           # Windows
 ```
 
 **2. 출력 예시**
+
+**성공적인 연결 (보드에서 하트비트 수신):**
 ```
-╔═══════════════════════════════════════════════════════════╗
-║         MAVLink V2 Lite Heartbeat Test Tool             ║
-╚═══════════════════════════════════════════════════════════╝
+=============================================================
+         MAVLink V2 Lite Heartbeat Test Tool
+=============================================================
 
-📡 Scanning for serial ports...
-✅ Found 1 port(s):
-   1. /dev/ttyUSB0 (FTDI)
+[SCAN] Scanning for serial ports...
+[INFO] Found 2 port(s):
+   1. /dev/ttyUSB0 (FTDI) S/N: DP05GXO4
+   2. /dev/ttyUSB1 (Prolific)
 
-🔌 Auto-selected: /dev/ttyUSB0
-⏳ Connecting...
-✅ Connected to /dev/ttyUSB0 (115200 baud, 8N1)
+[AUTO] Auto-selected: /dev/ttyUSB0
+[CONNECT] Connecting...
+[OK] Connected to /dev/ttyUSB0 (115200 baud, 8N1)
 
-🚀 Starting heartbeat (1Hz TX, monitoring RX)...
+[START] Starting heartbeat (1Hz TX, monitoring RX)...
 
-📤 TX Heartbeat #0 (sent: 1)
-📥 RX Heartbeat from SYS:1 COMP:1 SEQ:0 STATE:ACTIVE TYPE:31 (received: 1)
-🎉 ✅ CONNECTION ESTABLISHED!
+[TX] Heartbeat #0 (total sent: 1)
+[RX] Heartbeat from SYS:1 COMP:1 SEQ:0 STATE:ACTIVE TYPE:31 (total received: 1)
+[CONNECTED] Connection established!
 
-────────────────────────────────────────────────────────────
-📊 STATUS
-   Connection:     ● CONNECTED
+----------------------------------------------------------------------
+STATUS REPORT
+   Connection:     CONNECTED
    Heartbeats:     TX: 5  RX: 5
    Last RX:        15:30:45 (1.2s ago)
    Parser:         Total: 5  CRC Errors: 0  Parse Errors: 0
    Serial:         TX: 105 bytes  RX: 105 bytes
    Remote Status:  ACTIVE (Type: 31)
-────────────────────────────────────────────────────────────
+----------------------------------------------------------------------
+```
+
+**TX만 작동 (보드에서 하트비트 미수신 - 현재 상태):**
+```
+[TX] Heartbeat #0 (total sent: 1)
+[TX] Heartbeat #1 (total sent: 2)
+[TX] Heartbeat #2 (total sent: 3)
+
+----------------------------------------------------------------------
+STATUS REPORT
+   Connection:     DISCONNECTED
+   Heartbeats:     TX: 5  RX: 0
+   Last RX:        Never (N/A)
+   Parser:         Total: 0  CRC Errors: 0  Parse Errors: 0
+   Serial:         TX: 105 bytes  RX: 0 bytes
+   NOTE: TX is working but no RX from board. Check:
+         1. Board is sending heartbeats
+         2. UART wiring (TX<->RX crossover)
+         3. Board baud rate (115200 8N1)
+----------------------------------------------------------------------
 ```
 
 ### 프로토콜 테스트
