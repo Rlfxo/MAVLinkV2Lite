@@ -11,24 +11,33 @@ DC Charger와 PC 간 UART 통신을 위한 MAVLink V2 Lite 기반 모니터링 �
 
 ## 현재 진행 상태
 
-### 완료된 작업 (Day 1)
-- [x] 프로젝트 초기 설정
-  - package.json 생성 (Electron + React + TypeScript 의존성)
-  - tsconfig.json 설정 (엄격한 타입 체크)
-  - vite.config.ts 설정 (Vite + Electron 플러그인)
-  - vitest.config.ts 설정 (단위 테스트)
-- [x] 폴더 구조 생성
-  - electron/ (Main process)
-  - src/ (Renderer process)
-  - test/ (테스트 파일)
-- [x] .gitignore 업데이트 (Node.js, Electron 관련)
-- [x] 프로젝트 문서화 (README.md, index.html)
+### ✅ 완료된 작업 (Day 1-5)
 
-### 다음 작업 (Day 2-3: 프로토콜 레이어)
-- [ ] CRC-16-CCITT 구현 및 테스트
-- [ ] MAVLink 프로토콜 상수 및 타입 정의
-- [ ] MAVLink Parser 구현 (state machine)
-- [ ] Message Encoder 구현 (HEARTBEAT)
+#### Day 1: 프로젝트 초기 설정
+- [x] package.json, tsconfig.json, vite.config.ts, vitest.config.ts 설정
+- [x] 폴더 구조 생성 (electron/, src/, test/)
+- [x] .gitignore 및 문서화
+
+#### Day 2-3: 프로토콜 레이어
+- [x] **CRC-16-CCITT 구현 및 테스트** (21 tests passed)
+- [x] **MAVLink 프로토콜 상수 및 타입 정의**
+- [x] **MAVLink Parser 구현** (state machine, 24 tests passed)
+- [x] **Message Encoder 구현** (HEARTBEAT, 17 tests passed)
+- [x] **Python 참조 구현과 100% 호환 검증**
+
+#### Day 4-5: Serial 통신 레이어 (CLI 기반)
+- [x] **SerialPortManager 구현** (포트 연결, 데이터 송수신)
+- [x] **HeartbeatManager 구현** (1Hz TX, RX 모니터링, timeout)
+- [x] **CLI 테스트 스크립트** (`scripts/test-heartbeat.ts`)
+
+### 📊 테스트 현황
+```
+✓ test/protocol/crc16.test.ts     (21 tests)
+✓ test/protocol/encoder.test.ts   (17 tests)
+✓ test/protocol/parser.test.ts    (24 tests)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  Total: 62 tests passed | 1 skipped
+```
 
 자세한 작업 목록은 [TODO.md](./TODO.md) 참조
 
@@ -55,23 +64,74 @@ DC Charger와 PC 간 UART 통신을 위한 MAVLink V2 Lite 기반 모니터링 �
 ### 필수 요구사항
 - Node.js 18.x 이상
 - npm 또는 yarn
-- Python 3.x (테스트 프레임 생성용, 선택사항)
 - USB-UART 어댑터 (실제 하드웨어 테스트용)
+- DC Charger 보드 (UART5: TX=PC12, RX=PD2)
 
-### 설치 및 실행
+### 설치
 
 ```bash
-# 1. 의존성 설치
+# 의존성 설치
 npm install
-
-# 2. 개발 모드 실행 (현재는 설정만 완료, 코드 미구현)
-npm run electron:dev
-
-# 3. 테스트 실행
-npm test
 ```
 
-**주의**: 현재 Day 1 설정만 완료되었으며, 실제 동작하는 코드는 Day 2부터 구현됩니다.
+### CLI로 보드 테스트 (추천)
+
+**1. 보드 연결**
+```bash
+# 시리얼 포트 자동 감지 및 연결
+npm run test:heartbeat
+
+# 특정 포트 지정
+npm run test:heartbeat /dev/ttyUSB0    # Linux
+npm run test:heartbeat /dev/tty.usbserial-*  # macOS
+npm run test:heartbeat COM3           # Windows
+```
+
+**2. 출력 예시**
+```
+╔═══════════════════════════════════════════════════════════╗
+║         MAVLink V2 Lite Heartbeat Test Tool             ║
+╚═══════════════════════════════════════════════════════════╝
+
+📡 Scanning for serial ports...
+✅ Found 1 port(s):
+   1. /dev/ttyUSB0 (FTDI)
+
+🔌 Auto-selected: /dev/ttyUSB0
+⏳ Connecting...
+✅ Connected to /dev/ttyUSB0 (115200 baud, 8N1)
+
+🚀 Starting heartbeat (1Hz TX, monitoring RX)...
+
+📤 TX Heartbeat #0 (sent: 1)
+📥 RX Heartbeat from SYS:1 COMP:1 SEQ:0 STATE:ACTIVE TYPE:31 (received: 1)
+🎉 ✅ CONNECTION ESTABLISHED!
+
+────────────────────────────────────────────────────────────
+📊 STATUS
+   Connection:     ● CONNECTED
+   Heartbeats:     TX: 5  RX: 5
+   Last RX:        15:30:45 (1.2s ago)
+   Parser:         Total: 5  CRC Errors: 0  Parse Errors: 0
+   Serial:         TX: 105 bytes  RX: 105 bytes
+   Remote Status:  ACTIVE (Type: 31)
+────────────────────────────────────────────────────────────
+```
+
+### 프로토콜 테스트
+
+```bash
+# 전체 테스트 실행
+npm test
+
+# 특정 테스트만 실행
+npm test -- crc16.test.ts
+npm test -- encoder.test.ts
+npm test -- parser.test.ts
+
+# UI 모드
+npm run test:ui
+```
 
 ## 개발
 
