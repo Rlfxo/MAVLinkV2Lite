@@ -204,47 +204,46 @@ MAVLinkV2Lite/
 │   └── MVLink2LiteAPP.md          # ✅ 사양서 (기존)
 │
 ├── electron/                       # Main process (Node.js)
-│   ├── main.ts                    # ⏳ 미구현
-│   ├── preload.ts                 # ⏳ 미구현
-│   ├── protocol/                  # MAVLink 프로토콜 레이어
-│   │   ├── crc16.ts              # ⏳ 다음 작업
-│   │   ├── constants.ts          # ⏳ 다음 작업
-│   │   ├── types.ts              # ⏳ 다음 작업
-│   │   ├── parser.ts             # ⏳ 다음 작업
-│   │   └── encoder.ts            # ⏳ 다음 작업
-│   ├── serial/
-│   │   ├── SerialPortManager.ts  # ⏳ Day 4
-│   │   └── HeartbeatManager.ts   # ⏳ Day 4
-│   └── ipc/
-│       ├── serialHandlers.ts     # ⏳ Day 5
-│       └── heartbeatHandlers.ts  # ⏳ Day 5
+│   ├── main.ts                    # ⏳ 미구현 (다음 작업)
+│   ├── preload.ts                 # ⏳ 미구현 (다음 작업)
+│   ├── protocol/                  # ✅ MAVLink 프로토콜 레이어 완료
+│   │   ├── crc16.ts              # ✅ 완료 (21 tests)
+│   │   ├── constants.ts          # ✅ 완료
+│   │   ├── types.ts              # ✅ 완료
+│   │   ├── parser.ts             # ✅ 완료 (24 tests)
+│   │   └── encoder.ts            # ✅ 완료 (17 tests)
+│   ├── serial/                    # ✅ Serial 통신 레이어 완료
+│   │   ├── SerialPortManager.ts  # ✅ 완료
+│   │   └── HeartbeatManager.ts   # ✅ 완료
+│   └── ipc/                       # ⏳ 미구현 (다음 작업)
+│       ├── serialHandlers.ts     # ⏳ 미구현
+│       └── heartbeatHandlers.ts  # ⏳ 미구현
 │
 ├── src/                           # Renderer process (React)
-│   ├── main.tsx                   # ⏳ Day 6
-│   ├── App.tsx                    # ⏳ Day 6
+│   ├── main.tsx                   # ⏳ 미구현
+│   ├── App.tsx                    # ⏳ 미구현
 │   ├── components/
-│   │   ├── ConnectionPanel.tsx   # ⏳ Day 6
-│   │   ├── StatusDisplay.tsx     # ⏳ Day 6
-│   │   ├── StatisticsPanel.tsx   # ⏳ Day 7
-│   │   └── MessageLog.tsx        # ⏳ Day 7
+│   │   ├── ConnectionPanel.tsx   # ⏳ 미구현
+│   │   ├── StatusDisplay.tsx     # ⏳ 미구현
+│   │   ├── StatisticsPanel.tsx   # ⏳ 미구현
+│   │   └── MessageLog.tsx        # ⏳ 미구현
 │   ├── context/
-│   │   ├── AppContext.tsx        # ⏳ Day 6
-│   │   └── appReducer.ts         # ⏳ Day 6
+│   │   ├── AppContext.tsx        # ⏳ 미구현
+│   │   └── appReducer.ts         # ⏳ 미구현
 │   ├── hooks/
-│   │   ├── useSerialConnection.ts # ⏳ Day 6
-│   │   └── useHeartbeat.ts       # ⏳ Day 6
+│   │   ├── useSerialConnection.ts # ⏳ 미구현
+│   │   └── useHeartbeat.ts       # ⏳ 미구현
 │   └── types/
-│       └── electron.d.ts         # ⏳ Day 5
+│       └── electron.d.ts         # ⏳ 미구현 (다음 작업)
 │
-└── test/                          # 테스트
-    ├── protocol/
-    │   ├── crc16.test.ts         # ⏳ Day 2
-    │   ├── parser.test.ts        # ⏳ Day 3
-    │   └── encoder.test.ts       # ⏳ Day 3
-    ├── mocks/
-    │   └── MockSerialPort.ts     # ⏳ Day 4
-    └── fixtures/
-        └── heartbeat-frames.bin  # ⏳ Day 3
+├── test/                          # ✅ 테스트 완료
+│   └── protocol/
+│       ├── crc16.test.ts         # ✅ 완료 (21 tests)
+│       ├── parser.test.ts        # ✅ 완료 (24 tests)
+│       └── encoder.test.ts       # ✅ 완료 (17 tests)
+│
+└── scripts/                        # ✅ CLI 도구 완료
+    └── test-heartbeat.ts          # ✅ 완료 (Heartbeat CLI 테스트)
 
 범례: ✅ 완료, ⏳ 미구현
 ```
@@ -252,9 +251,8 @@ MAVLinkV2Lite/
 ## 참고 문서
 
 ### 프로젝트 문서
-- [TODO 리스트](./TODO.md) - 다음 작업 항목 (우선순위별 정리)
+- [TODO 리스트](./TODO.md) - 다음 작업 항목 (Phase 2: Electron GUI 개발)
 - [MAVLink V2 Lite 사양서](./docs/MVLink2LiteAPP.md) - 전체 시스템 사양
-- [구현 계획](~/.claude/plans/playful-sprouting-pillow.md) - 상세 구현 계획 (8일 일정)
 
 ### 참조 구현 (기존 펌웨어 프로젝트)
 - **Python 테스트 툴**: `/Users/gilbert/00_EVAR/01_code/03_DC_Charger/evar-dc-charger/test/`
@@ -266,11 +264,20 @@ MAVLinkV2Lite/
 
 ## 개발 가이드
 
+### 현재 진행 상태
+- **Phase 1 완료**: 프로토콜 레이어 + Serial 통신 레이어 + CLI 테스트
+  - 62개 테스트 통과
+  - CLI로 하드웨어 테스트 가능
+- **Phase 2 진행 중**: Electron GUI 애플리케이션 개발
+
 ### 다음 세션 시작 방법
 1. `TODO.md` 파일 확인하여 다음 작업 파악
-2. Day 2 작업부터 시작: CRC-16-CCITT 구현
-3. Python 참조 구현(`test_crc16_ccitt.py`)을 TypeScript로 포팅
-4. 단위 테스트 작성 및 검증
+2. Phase 2 시작: Electron Main Process 구현
+   - `electron/main.ts` - BrowserWindow 생성, IPC 설정
+   - `electron/preload.ts` - contextBridge API 노출
+   - `electron/ipc/` - IPC Handlers 구현
+3. 기존 SerialPortManager, HeartbeatManager 재사용
+4. `npm run electron:dev`로 GUI 테스트
 
 ### 코딩 규칙
 - **TypeScript**: 엄격한 타입 체크 사용 (`strict: true`)
