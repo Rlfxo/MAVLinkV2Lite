@@ -42,7 +42,7 @@ MAVLink V2 Lite 프레임은 다음 필드로 구성된다.
       +-----+-----+-------+-------+-----+-------+-------+--------+--------+--------+-------+-----+-----+
       | STX | LEN | IFLAGS| CFLAGS| SEQ | SYSID | COMPID| MSGID_L| MSGID_M| MSGID_H|PAYLOAD| CRC_L|CRC_H|
       +-----+-----+-------+-------+-----+-------+-------+--------+--------+--------+-------+-----+-----+
-      |0xFD | 0-255|  0x00 |  0x00 |0-255| 1/255 |  0-1  |      24-bit MSG ID     | 0~255B|  CRC-16   |
+      |0xFD | 0-255|  0x00 |  0x00 |0-255| 1/255 |   0   |      24-bit MSG ID     | 0~255B|  CRC-16   |
 ```
 
 ### Field Description
@@ -70,7 +70,7 @@ MAVLink V2 Lite 프레임은 다음 필드로 구성된다.
 
 | Device | SYSID | COMPID | Description |
 |--------|-------|--------|-------------|
-| DC Charger | 1 | 1 | 충전기 메인 컨트롤러 |
+| DC Charger | 1 | 0 | 충전기 메인 컨트롤러 |
 | PC / App | 255 | 0 | 모니터링/제어 앱 |
 
 ---
@@ -531,14 +531,14 @@ Byte  Hex   Description
  3    00    CFLAGS
  4    00    SEQ (sequence = 0)
  5    01    SYSID (1 = Charger)
- 6    01    COMPID (1)
+ 6    00    COMPID (0)
  7    00    MSGID_L (0 = HEARTBEAT)
  8    00    MSGID_M
  9    00    MSGID_H
 10    03    system_status (3 = RUN)
 11    03    mavlink_version (3)
-12    E4    CRC_L (0x01E4)
-13    01    CRC_H
+12    85    CRC_L (0xB985)
+13    B9    CRC_H
 ────────────────────────────────────
 Total: 14 bytes
 ```

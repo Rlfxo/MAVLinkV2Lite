@@ -70,17 +70,17 @@ describe('MAVLink Parser', () => {
     });
 
     it('should parse known Charger HEARTBEAT frame', () => {
-      // From PROTOCOL.md: SYSID=1, COMPID=1, SEQ=0, status=RUN(3), version=3
-      // CRC = 0x01E4
+      // From PROTOCOL.md: SYSID=1, COMPID=0, SEQ=0, status=RUN(3), version=3
+      // CRC = 0xB985
       const chargerFrame = new Uint8Array([
-        0xFD, 0x02, 0x00, 0x00, 0x00, 0x01, 0x01, 0x00, 0x00, 0x00,
-        0x03, 0x03, 0xE4, 0x01
+        0xFD, 0x02, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00,
+        0x03, 0x03, 0x85, 0xB9
       ]);
 
       const messages = parser.parseBuffer(chargerFrame);
       expect(messages.length).toBe(1);
       expect(messages[0].sysid).toBe(1);
-      expect(messages[0].compid).toBe(1);
+      expect(messages[0].compid).toBe(0);
     });
 
     it('should handle multiple consecutive frames', () => {

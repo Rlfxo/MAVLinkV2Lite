@@ -140,14 +140,14 @@ describe('CRC-16-CCITT-FALSE', () => {
     });
 
     it('should verify MAVLink frame with embedded CRC', () => {
-      // Charger HEARTBEAT: SYSID=1, COMPID=1, SEQ=0
+      // Charger HEARTBEAT: SYSID=1, COMPID=0, SEQ=0
       const frameData = new Uint8Array([
         0x02,              // LEN
         0x00,              // INC_FLAGS
         0x00,              // CMP_FLAGS
         0x00,              // SEQ
         0x01,              // SYS_ID (1 = Charger)
-        0x01,              // COMP_ID
+        0x00,              // COMP_ID
         0x00, 0x00, 0x00,  // MSG_ID
         0x03,              // system_status (3 = RUN)
         0x03,              // mavlink_version
@@ -159,8 +159,8 @@ describe('CRC-16-CCITT-FALSE', () => {
       let expectedCrc = crc16Calculate(frameData);
       expectedCrc = crc16Accumulate(expectedCrc, crcExtra);
 
-      // Expected CRC from PROTOCOL.md: 0x01E4
-      expect(expectedCrc).toBe(0x01E4);
+      // Expected CRC from PROTOCOL.md: 0xB985
+      expect(expectedCrc).toBe(0xB985);
 
       // Create complete frame with CRC
       const completeFrame = new Uint8Array(frameData.length + 2);

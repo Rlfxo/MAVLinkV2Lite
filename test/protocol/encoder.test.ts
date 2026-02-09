@@ -96,7 +96,7 @@ describe('MAVLink Encoder', () => {
     it('should encode charger HEARTBEAT with SYSID=1', () => {
       const frame = encodeHeartbeat({
         sysid: 1,
-        compid: 1,
+        compid: 0,
         seq: 0,
         systemStatus: MAV_STATE.RUN,
         mavlinkVersion: 3,
@@ -104,7 +104,7 @@ describe('MAVLink Encoder', () => {
 
       expect(frame.length).toBe(14);
       expect(frame[5]).toBe(1);   // SYSID = 1
-      expect(frame[6]).toBe(1);   // COMPID = 1
+      expect(frame[6]).toBe(0);   // COMPID = 0
       expect(frame[10]).toBe(MAV_STATE.RUN);
       expect(frame[11]).toBe(3);
     });
@@ -188,12 +188,12 @@ describe('MAVLink Encoder', () => {
     });
 
     it('createChargerHeartbeat should create valid charger heartbeat', () => {
-      const frame = createChargerHeartbeat(10, 1, 1, MAV_STATE.STANDBY);
+      const frame = createChargerHeartbeat(10, 1, 0, MAV_STATE.STANDBY);
 
       expect(frame[0]).toBe(0xFD);   // STX
       expect(frame[4]).toBe(10);     // SEQ
       expect(frame[5]).toBe(1);      // SYSID
-      expect(frame[6]).toBe(1);      // COMPID
+      expect(frame[6]).toBe(0);      // COMPID
 
       // Decode payload
       const payload = frame.subarray(10, 12);
@@ -207,7 +207,7 @@ describe('MAVLink Encoder', () => {
       const frame = createChargerHeartbeat(0);
 
       expect(frame[5]).toBe(1);      // Default SYSID for charger
-      expect(frame[6]).toBe(1);      // Default COMPID
+      expect(frame[6]).toBe(0);      // Default COMPID
 
       const payload = frame.subarray(10, 12);
       const decoded = decodeHeartbeatPayload(payload);

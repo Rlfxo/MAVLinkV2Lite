@@ -156,10 +156,6 @@ export const SYSID_PC = 255;
  */
 export const COMPID_MAIN = 0;
 
-/**
- * Component ID for relay controller
- */
-export const COMPID_RELAY = 1;
 
 // ============================================================================
 // MAVLink Heartbeat Constants
