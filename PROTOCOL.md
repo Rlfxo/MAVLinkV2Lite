@@ -134,13 +134,13 @@ function crc16_calculate(data: byte[], crc_extra: uint8) -> uint16:
 
 HEARTBEAT 메시지 (PC → Charger):
 ```
-Frame:  FD 09 00 00 00 FF 00 00 00 00  00 00 00 00 06 00 00 04 03  XX XX
-        |  |                              |--- payload (9 bytes) ---|  |CRC|
-        |  +-- LEN=9                                                    |
-        +-- STX                                                         |
-                                                                        |
-CRC Input: [09 00 00 00 FF 00 00 00 00] + [00 00 00 00 06 00 00 04 03] + [32]
-           |--- header (9 bytes) ---|     |--- payload (9 bytes) ---|    |CRC Extra=50(0x32)|
+Frame:  FD 02 00 00 00 FF 00 00 00 00  03 03  XX XX
+        |  |                              |pld|  |CRC|
+        |  +-- LEN=2                              |
+        +-- STX                                   |
+                                                  |
+CRC Input: [02 00 00 00 FF 00 00 00 00] + [03 03] + [32]
+           |--- header (9 bytes) ---|     |2 B|    |CRC Extra=50(0x32)|
 ```
 
 ---
@@ -150,33 +150,22 @@ CRC Input: [09 00 00 00 FF 00 00 00 00] + [00 00 00 00 06 00 00 04 03] + [32]
 ### 4.1 HEARTBEAT (MSG_ID: 0)
 
 연결 상태 확인 및 Keep-alive. 양방향 1Hz 전송.
+응답 없이 각자 독립적으로 전송하며, 상대방의 생존 여부만 판단한다.
 
 | Direction | Rate | Payload Size |
 |-----------|------|-------------|
-| Bidirectional | 1 Hz | 9 bytes |
+| Bidirectional | 1 Hz | 2 bytes |
 
 #### Payload Structure
 
 ```
 Offset  Size    Type        Field             Description
 ───────────────────────────────────────────────────────────────
-0       4       uint32_t    custom_mode       시스템별 커스텀 모드
-4       1       uint8_t     type              MAV_TYPE (시스템 유형)
-5       1       uint8_t     autopilot         MAV_AUTOPILOT
-6       1       uint8_t     base_mode         Base mode bitmap
-7       1       uint8_t     system_status     MAV_STATE (시스템 상태)
-8       1       uint8_t     mavlink_version   MAVLink version (항상 3)
+0       1       uint8_t     system_status     시스템 상태 (MAV_STATE)
+1       1       uint8_t     mavlink_version   프로토콜 버전 (항상 3)
 ───────────────────────────────────────────────────────────────
-Total: 9 bytes
+Total: 2 bytes
 ```
-
-#### MAV_TYPE Values
-
-| Value | Name | Description |
-|-------|------|-------------|
-| 0 | GENERIC | 일반 |
-| 6 | GCS | Ground Control Station (PC) |
-| 31 | CHARGING_STATION | DC 충전기 |
 
 #### MAV_STATE Values
 
@@ -184,32 +173,22 @@ Total: 9 bytes
 |-------|------|-------------|
 | 0 | UNINIT | 미초기화 |
 | 1 | BOOT | 부팅 중 |
-| 2 | CALIBRATING | 캘리브레이션 |
-| 3 | STANDBY | 대기 |
-| 4 | ACTIVE | 활성 (정상 동작) |
-| 5 | CRITICAL | 위험 |
-| 6 | EMERGENCY | 비상 |
-| 7 | POWEROFF | 종료 중 |
+| 2 | STANDBY | 대기 (idle) |
+| 3 | RUN | 정상 동작 |
+| 4 | ERROR | 에러 |
+| 5 | SHUTDOWN | RUN → STANDBY 전환 (종료 절차) |
 
 #### PC Heartbeat (TX)
 
 ```
-custom_mode    = 0x00000000
-type           = 6 (GCS)
-autopilot      = 0 (GENERIC)
-base_mode      = 0x00
-system_status  = 4 (ACTIVE)
+system_status   = 3 (RUN)
 mavlink_version = 3
 ```
 
 #### DC Charger Heartbeat (RX)
 
 ```
-custom_mode    = (Charger state dependent)
-type           = 31 (CHARGING_STATION)
-autopilot      = 0 (GENERIC)
-base_mode      = (mode bitmap)
-system_status  = 4 (ACTIVE) or others
+system_status   = 3 (RUN) or others
 mavlink_version = 3
 ```
 
@@ -222,42 +201,52 @@ mavlink_version = 3
 
 ### 4.2 CHARGER_STATUS (MSG_ID: 10001) - Phase 3
 
-충전기 실시간 상태. DC Charger → PC, 10Hz.
+충전기 운영 상태. DC Charger → PC, 10Hz.
+방전(SECC)/재충전(EVCC) 상태, BMS 정보, 릴레이, 진단 정보를 포함한다.
+실시간 전기 측정값(voltage, current)은 SENSOR_DATA(10002)에서 전송한다.
 
 | Direction | Rate | Payload Size |
 |-----------|------|-------------|
-| Board → PC | 10 Hz | 32 bytes |
+| Board → PC | 10 Hz | 16 bytes |
 
 #### Payload Structure
 
 ```
-Offset  Size    Type        Field             Description              Unit
-──────────────────────────────────────────────────────────────────────────────
-0       4       float       voltage_V         DC 출력 전압              V
-4       4       float       current_A         DC 출력 전류              A
-8       4       float       power_kW          출력 전력                 kW
-12      4       uint32_t    energy_Wh         누적 에너지               Wh
-16      4       uint32_t    uptime_sec        업타임                    sec
-20      4       uint32_t    relay_bitmap      릴레이 상태 비트맵         bitmask
-24      2       uint16_t    error_code        에러 코드
-26      1       uint8_t     state             충전 상태
-27      1       uint8_t     soc_pct           SOC                      %
-28      1       uint8_t     fault_flags       고장 플래그               bitmask
-29      3       uint8_t[3]  reserved          예약
-──────────────────────────────────────────────────────────────────────────────
-Total: 32 bytes
+Offset  Size    Type        Field           Description              Unit
+──────────────────────────────────────────────────────────────────────────
+0       1       uint8_t     discharging     방전 상태 (SECC)          0=off, 1~255
+1       1       uint8_t     recharging      재충전 상태 (EVCC)        0=off, 1~255
+2       1       uint8_t     bms_vendor      BMS 벤더                  enum
+3       2       uint16_t    bms_cap         BMS 용량                  kWh
+5       1       uint8_t     out_cap         아웃풋 컨버터 최대 용량     kW
+6       1       uint8_t     bms_soc         SOC                       %
+7       1       uint8_t     diagnosis       진단 플래그                bitmask
+8       4       uint32_t    relay_bitmap    릴레이 비트맵              bitmask
+12      4       uint32_t    uptime_sec      시스템 업타임              sec
+──────────────────────────────────────────────────────────────────────────
+Total: 16 bytes
 ```
 
-#### Charging State Values
+#### discharging (SECC State Values)
+
+| Value | Description |
+|-------|-------------|
+| 0 | OFF (방전 비활성) |
+| 1~255 | SECC 상태 코드 (프로토콜별 정의) |
+
+#### recharging (EVCC State Values)
+
+| Value | Description |
+|-------|-------------|
+| 0 | OFF (재충전 비활성) |
+| 1~255 | EVCC 상태 코드 (프로토콜별 정의) |
+
+#### bms_vendor Values
 
 | Value | Name | Description |
 |-------|------|-------------|
-| 0 | IDLE | 대기 |
-| 1 | PRECHARGE | 프리차지 |
-| 2 | CHARGING | 충전 중 |
-| 3 | COMPLETE | 충전 완료 |
-| 4 | ERROR | 에러 |
-| 5 | EMERGENCY | 비상 정지 |
+| 0 | UNKNOWN | 미지정 |
+| 1~ | TBD | 벤더별 코드 (추후 정의) |
 
 #### relay_bitmap Bit Assignments
 
@@ -274,10 +263,11 @@ Total: 32 bytes
 ### 4.3 SENSOR_DATA (MSG_ID: 10002) - Phase 3
 
 센서 데이터. DC Charger → PC, 2Hz.
+환경 센서(온습도), IMU(가속도/자이로), DCGF, 전력량계, IMD 데이터를 포함한다.
 
 | Direction | Rate | Payload Size |
 |-----------|------|-------------|
-| Board → PC | 2 Hz | 40 bytes |
+| Board → PC | 2 Hz | 52 bytes |
 
 #### Payload Structure
 
@@ -295,9 +285,13 @@ Offset  Size    Type        Field             Description              Unit
 32      2       uint16_t    dcgf_fault        DCGF 고장 코드
 34      2       uint16_t    dcgf_volt1        DCGF 전압 1               mV
 36      2       uint16_t    dcgf_volt2        DCGF 전압 2               mV
-38      2       uint8_t[2]  reserved          예약
+38      4       uint32_t    meter_voltage     전력량계 전압              mV
+42      4       uint32_t    meter_current     전력량계 전류              mA
+46      4       uint32_t    meter_energy      전력량계 누적량             Wh
+50      1       uint8_t     imd_stop_mode     IMD 정지 모드
+51      1       uint8_t     reserved          예약 (alignment)
 ──────────────────────────────────────────────────────────────────────────────
-Total: 40 bytes
+Total: 52 bytes
 ```
 
 ---
@@ -308,69 +302,76 @@ Total: 40 bytes
 
 | Direction | Rate | Payload Size |
 |-----------|------|-------------|
-| PC → Board | On command | 20 bytes |
+| PC → Board | On command | 3 bytes |
 
 #### Payload Structure
 
 ```
-Offset  Size    Type        Field               Description            Unit
+Offset  Size    Type        Field             Description              Unit
 ──────────────────────────────────────────────────────────────────────────────
-0       4       float       target_voltage_V    목표 전압                V
-4       4       float       target_current_A    목표 전류                A
-8       4       float       max_power_kW        최대 전력                kW
-12      4       uint32_t    timeout_sec         명령 타임아웃 (0=무제한)   sec
-16      1       uint8_t     command             명령 타입
-17      3       uint8_t[3]  reserved            예약
+0       2       uint16_t    max_power_kW      최대 전력                  kW
+2       1       uint8_t     command           명령 타입
 ──────────────────────────────────────────────────────────────────────────────
-Total: 20 bytes
+Total: 3 bytes
 ```
 
 #### Command Types
 
 | Value | Name | Description |
 |-------|------|-------------|
-| 0 | STOP | 충전 정지 |
-| 1 | START | 충전 시작 |
-| 2 | EMERGENCY | 비상 정지 |
-| 3 | PRECHARGE | 프리차지 시작 |
-| 4 | DISCHARGE | 방전 시작 |
+| 0 | STOP | 정지 |
+| 1 | DISCHARGE | 방전 (차량 충전) |
+| 2 | RECHARGE | ESS 재충전 |
 
 ---
 
-### 4.5 RELAY_CONTROL (MSG_ID: 10101) - Phase 4
+### 4.5 MANUAL_CONTROL (MSG_ID: 10101) - Phase 4
 
-릴레이 개별 제어. PC → DC Charger, On-demand.
+JIG/테스트용 강제 제어 명령. PC → DC Charger, On-demand.
+매뉴얼 모드 진입 시 보드의 자율 제어를 무시하고 릴레이 및 충방전을 강제 제어한다.
 
 | Direction | Rate | Payload Size |
 |-----------|------|-------------|
-| PC → Board | On command | 8 bytes |
+| PC → Board | On command | 6 bytes |
 
 #### Payload Structure
 
 ```
 Offset  Size    Type        Field             Description
 ──────────────────────────────────────────────────────────────
-0       4       uint32_t    relay_bitmap      대상 릴레이 비트맵
-4       1       uint8_t     action            동작
-5       3       uint8_t[3]  reserved          예약
+0       1       uint8_t     manual_mode       매뉴얼 모드 (0=OFF, 1=ON)
+1       4       uint32_t    relay_bitmap      릴레이 강제 제어 비트맵
+5       1       uint8_t     force_command     강제 명령
 ──────────────────────────────────────────────────────────────
-Total: 8 bytes
+Total: 6 bytes
 ```
 
-#### Action Values
+#### manual_mode Values
 
 | Value | Name | Description |
 |-------|------|-------------|
-| 0 | OFF | 릴레이 OFF |
-| 1 | ON | 릴레이 ON |
-| 2 | TOGGLE | 릴레이 토글 |
+| 0 | OFF | 매뉴얼 모드 해제 (보드 자율 제어 복귀) |
+| 1 | ON | 매뉴얼 모드 진입 (이하 필드 적용) |
 
-#### Example: Turn ON Relay 3 and Main Contactor
+#### force_command Values
 
-```
-relay_bitmap = 0x00010004    (bit 2 = RY3, bit 16 = MC)
-action       = 1             (ON)
-```
+| Value | Name | Description |
+|-------|------|-------------|
+| 0 | NONE | 강제 명령 없음 (릴레이만 제어) |
+| 1 | FORCE_DISCHARGE | 강제 방전 |
+| 2 | FORCE_RECHARGE | 강제 재충전 |
+
+#### relay_bitmap
+
+manual_mode=ON일 때 릴레이 직접 제어 (bit=1: ON, bit=0: OFF)
+
+| Bit | Relay | Description |
+|-----|-------|-------------|
+| 0 | RY1 | Relay 1 |
+| 1 | RY2 | Relay 2 |
+| ... | ... | ... |
+| 15 | RY16 | Relay 16 |
+| 16 | MC | Main Contactor |
 
 ---
 
@@ -392,7 +393,7 @@ Payload 없음. 프레임 전송만으로 CONFIG_RESPONSE 응답을 트리거한
 
 | Direction | Rate | Payload Size |
 |-----------|------|-------------|
-| Board → PC | On request | 40 bytes |
+| Board → PC | On request | 36 bytes |
 
 #### Payload Structure
 
@@ -401,12 +402,10 @@ Offset  Size    Type         Field             Description
 ──────────────────────────────────────────────────────────────────
 0       4       uint32_t     fw_version        FW 버전 (0x00XXYYZZ)
 4       4       uint32_t     hw_version        HW 버전
-8       4       uint32_t     serial_number     시리얼 번호
-12      16      char[16]     model_name        모델명 (null-terminated)
-28      12      char[12]     build_date        빌드 날짜 (YYYYMMDDHHSS)
-40      4       uint8_t[4]   reserved          예약
+8       16      char[16]     model_name        모델명 (null-terminated)
+24      12      char[12]     build_date        빌드 날짜 (YYYYMMDDHHSS)
 ──────────────────────────────────────────────────────────────────
-Total: 44 bytes
+Total: 36 bytes
 ```
 
 #### Version Format
@@ -417,17 +416,30 @@ Example: `0x00010203` → v1.2.3
 
 ---
 
+### 4.8 Reserved Messages (TBD)
+
+아래 메시지는 펌웨어에 MSG ID만 선언되어 있으며, payload 구조는 미정의 상태이다.
+필요 시 추후 정의한다.
+
+| MSG ID | Name | Direction | Description |
+|--------|------|-----------|-------------|
+| 10004 | ERROR_STATUS | Board → PC | 에러 상태 보고 |
+| 10202 | PARAM_SET | PC → Board | 파라미터 설정 |
+| 10203 | PARAM_GET | PC → Board | 파라미터 조회 |
+
+---
+
 ## 5. Message Summary
 
 | MSG ID | Name | Direction | Rate | Payload | CRC Extra | Status |
 |--------|------|-----------|------|---------|-----------|--------|
-| 0 | HEARTBEAT | Bidirectional | 1 Hz | 9 B | 50 | Implemented |
-| 10001 | CHARGER_STATUS | Board → PC | 10 Hz | 32 B | 123 | Phase 3 |
-| 10002 | SENSOR_DATA | Board → PC | 2 Hz | 40 B | 87 | Phase 3 |
-| 10100 | CHARGER_COMMAND | PC → Board | On cmd | 20 B | 45 | Phase 4 |
-| 10101 | RELAY_CONTROL | PC → Board | On cmd | 8 B | 200 | Phase 4 |
+| 0 | HEARTBEAT | Bidirectional | 1 Hz | 2 B | TBD | Redesign |
+| 10001 | CHARGER_STATUS | Board → PC | 10 Hz | 16 B | TBD | Redesign |
+| 10002 | SENSOR_DATA | Board → PC | 2 Hz | 52 B | TBD | Redesign |
+| 10100 | CHARGER_COMMAND | PC → Board | On cmd | 3 B | TBD | Redesign |
+| 10101 | MANUAL_CONTROL | PC → Board | On cmd | 6 B | TBD | Redesign |
 | 10200 | CONFIG_REQUEST | PC → Board | On req | 0 B | 100 | Phase 4 |
-| 10201 | CONFIG_RESPONSE | Board → PC | On req | 44 B | 101 | Phase 4 |
+| 10201 | CONFIG_RESPONSE | Board → PC | On req | 36 B | TBD | Redesign |
 
 ---
 
@@ -487,7 +499,7 @@ PC                                       DC Charger
 Byte  Hex   Description
 ────────────────────────────────────
  0    FD    STX (start marker)
- 1    09    LEN (payload = 9 bytes)
+ 1    02    LEN (payload = 2 bytes)
  2    00    IFLAGS
  3    00    CFLAGS
  4    00    SEQ (sequence = 0)
@@ -496,19 +508,12 @@ Byte  Hex   Description
  7    00    MSGID_L (0 = HEARTBEAT)
  8    00    MSGID_M
  9    00    MSGID_H
-10    00    custom_mode[0] (uint32 LE)
-11    00    custom_mode[1]
-12    00    custom_mode[2]
-13    00    custom_mode[3]
-14    06    type (6 = GCS)
-15    00    autopilot (0 = GENERIC)
-16    00    base_mode
-17    04    system_status (4 = ACTIVE)
-18    03    mavlink_version (3)
-19    XX    CRC_L
-20    XX    CRC_H
+10    03    system_status (3 = RUN)
+11    03    mavlink_version (3)
+12    XX    CRC_L
+13    XX    CRC_H
 ────────────────────────────────────
-Total: 21 bytes
+Total: 14 bytes
 ```
 
 ### 7.2 DC Charger HEARTBEAT Frame
@@ -517,7 +522,7 @@ Total: 21 bytes
 Byte  Hex   Description
 ────────────────────────────────────
  0    FD    STX
- 1    09    LEN (9)
+ 1    02    LEN (2)
  2    00    IFLAGS
  3    00    CFLAGS
  4    XX    SEQ
@@ -526,19 +531,12 @@ Byte  Hex   Description
  7    00    MSGID_L (0 = HEARTBEAT)
  8    00    MSGID_M
  9    00    MSGID_H
-10    XX    custom_mode[0]
-11    XX    custom_mode[1]
-12    XX    custom_mode[2]
-13    XX    custom_mode[3]
-14    1F    type (31 = CHARGING_STATION)
-15    00    autopilot
-16    XX    base_mode
-17    04    system_status (4 = ACTIVE)
-18    03    mavlink_version (3)
-19    XX    CRC_L
-20    XX    CRC_H
+10    03    system_status (3 = RUN)
+11    03    mavlink_version (3)
+12    XX    CRC_L
+13    XX    CRC_H
 ────────────────────────────────────
-Total: 21 bytes
+Total: 14 bytes
 ```
 
 ---
