@@ -8,11 +8,15 @@ import { ConnectionPanel } from './components/ConnectionPanel';
 import { StatusDisplay } from './components/StatusDisplay';
 import { StatisticsPanel } from './components/StatisticsPanel';
 import { MessageLog } from './components/MessageLog';
+import { ChargerStatusPanel } from './components/ChargerStatusPanel';
+import { SensorDataPanel } from './components/SensorDataPanel';
 import { useHeartbeat } from './hooks/useHeartbeat';
+import { useChargerData } from './hooks/useChargerData';
 import './App.css';
 
 export default function App() {
   useHeartbeat();
+  useChargerData();
 
   return (
     <div className="app">
@@ -26,6 +30,10 @@ export default function App() {
           <ConnectionPanel />
           <StatusDisplay />
           <StatisticsPanel />
+        </div>
+        <div className="data-row">
+          <ChargerStatusPanel />
+          <SensorDataPanel />
         </div>
         <MessageLog />
       </main>
