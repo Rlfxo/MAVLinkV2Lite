@@ -82,25 +82,12 @@ export interface MAVLinkHeader {
 /**
  * HEARTBEAT message payload
  *
- * Standard MAVLink HEARTBEAT message, sent at 1Hz by both PC and DC Charger.
- * Used for connection monitoring and system status indication.
+ * Simplified HEARTBEAT for DC Charger protocol.
+ * Sent at 1Hz by both PC and DC Charger for keep-alive.
  *
- * Payload size: 9 bytes
- * Struct format: <I5B (little-endian: uint32_t + 5x uint8_t)
+ * Payload size: 2 bytes
  */
 export interface HeartbeatPayload {
-  /** Custom mode (system-specific, not used for DC Charger) */
-  customMode: number; // uint32_t
-
-  /** Type of the system (MAV_TYPE enum) */
-  type: number; // uint8_t
-
-  /** Autopilot type (MAV_AUTOPILOT enum) */
-  autopilot: number; // uint8_t
-
-  /** System mode bitmap (not used for DC Charger) */
-  baseMode: number; // uint8_t
-
   /** System status (MAV_STATE enum) */
   systemStatus: number; // uint8_t
 
@@ -115,28 +102,21 @@ export interface HeartbeatPayload {
 /**
  * CHARGER_STATUS message payload
  *
- * Real-time charging status, sent by DC Charger at 10Hz.
- * Contains voltage, current, power, and charging state information.
+ * Charger operational status, sent by DC Charger at 10Hz.
+ * Contains discharging/recharging state, BMS info, relay, and diagnostics.
  *
- * Payload size: TBD (to be implemented in Phase 3)
+ * Payload size: 16 bytes (Phase 3)
  */
 export interface ChargerStatusPayload {
-  /** Output voltage (mV) */
-  voltageOutput: number; // uint32_t
-
-  /** Output current (mA) */
-  currentOutput: number; // uint32_t
-
-  /** Output power (mW) */
-  powerOutput: number; // uint32_t
-
-  /** Charging state (enum: idle, charging, complete, error, etc.) */
-  chargingState: number; // uint8_t
-
-  /** Error flags (bitfield) */
-  errorFlags: number; // uint16_t
-
-  // Additional fields to be defined in Phase 3
+  discharging: number;   // uint8_t - SECC state (0=off, 1~255)
+  recharging: number;    // uint8_t - EVCC state (0=off, 1~255)
+  bmsVendor: number;     // uint8_t - BMS vendor enum
+  bmsCap: number;        // uint16_t - BMS capacity (kWh)
+  outCap: number;        // uint8_t - Output converter max capacity (kW)
+  bmsSoc: number;        // uint8_t - SOC (%)
+  diagnosis: number;     // uint8_t - Diagnosis flags (bitmask)
+  relayBitmap: number;   // uint32_t - Relay bitmap
+  uptimeSec: number;     // uint32_t - System uptime (sec)
 }
 
 // ============================================================================
@@ -147,15 +127,27 @@ export interface ChargerStatusPayload {
  * SENSOR_DATA message payload
  *
  * Sensor readings, sent by DC Charger at 2Hz.
- * Contains temperature and other sensor data.
+ * Contains environment, IMU, DCGF, power meter, and IMD data.
  *
- * Payload size: TBD (to be implemented in Phase 3)
+ * Payload size: 52 bytes (Phase 3)
  */
 export interface SensorDataPayload {
-  /** Charger temperature (0.01°C units) */
-  temperature: number; // int16_t
-
-  // Additional sensor fields to be defined in Phase 3
+  temperatureC: number;   // float - Temperature (degC)
+  humidityPct: number;    // float - Humidity (%)
+  accelXMps2: number;     // float - Accel X (m/s^2)
+  accelYMps2: number;     // float - Accel Y (m/s^2)
+  accelZMps2: number;     // float - Accel Z (m/s^2)
+  gyroXDps: number;       // float - Gyro X (deg/s)
+  gyroYDps: number;       // float - Gyro Y (deg/s)
+  gyroZDps: number;       // float - Gyro Z (deg/s)
+  dcgfFault: number;      // uint16_t - DCGF fault code
+  dcgfVolt1: number;      // uint16_t - DCGF voltage 1 (mV)
+  dcgfVolt2: number;      // uint16_t - DCGF voltage 2 (mV)
+  meterVoltage: number;   // uint32_t - Power meter voltage (mV)
+  meterCurrent: number;   // uint32_t - Power meter current (mA)
+  meterEnergy: number;    // uint32_t - Power meter energy (Wh)
+  imdStopMode: number;    // uint8_t - IMD stop mode
+  reserved: number;       // uint8_t - Reserved (alignment)
 }
 
 // ============================================================================
@@ -166,41 +158,30 @@ export interface SensorDataPayload {
  * CHARGER_COMMAND message payload
  *
  * Charging control commands, sent by PC to DC Charger.
- * Commands include start, stop, and set limits.
  *
- * Payload size: TBD (to be implemented in Phase 4)
+ * Payload size: 3 bytes (Phase 4)
  */
 export interface ChargerCommandPayload {
-  /** Command type (enum: start, stop, set_limits, etc.) */
-  command: number; // uint8_t
-
-  /** Target voltage (mV) */
-  targetVoltage: number; // uint32_t
-
-  /** Current limit (mA) */
-  currentLimit: number; // uint32_t
-
-  // Additional command fields to be defined in Phase 4
+  maxPowerKw: number;   // uint16_t - Max power (kW)
+  command: number;      // uint8_t - Command type (0=STOP, 1=DISCHARGE, 2=RECHARGE)
 }
 
 // ============================================================================
-// RELAY_CONTROL Message (Message ID: 10101)
+// MANUAL_CONTROL Message (Message ID: 10101)
 // ============================================================================
 
 /**
- * RELAY_CONTROL message payload
+ * MANUAL_CONTROL message payload
  *
- * Relay control commands, sent by PC to DC Charger.
- * Controls 17 individual relays.
+ * JIG/test manual control commands, sent by PC to DC Charger.
+ * Overrides board autonomous control for relay and charge/discharge.
  *
- * Payload size: TBD (to be implemented in Phase 4)
+ * Payload size: 6 bytes (Phase 4)
  */
-export interface RelayControlPayload {
-  /** Relay mask (bitfield, 17 bits used) */
-  relayMask: number; // uint32_t
-
-  /** Relay state (bitfield, 17 bits used) */
-  relayState: number; // uint32_t
+export interface ManualControlPayload {
+  manualMode: number;    // uint8_t - Manual mode (0=OFF, 1=ON)
+  relayBitmap: number;   // uint32_t - Relay control bitmap
+  forceCommand: number;  // uint8_t - Force command (0=NONE, 1=FORCE_DISCHARGE, 2=FORCE_RECHARGE)
 }
 
 // ============================================================================

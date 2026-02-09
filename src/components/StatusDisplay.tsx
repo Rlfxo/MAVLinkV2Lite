@@ -21,7 +21,6 @@ export function StatusDisplay() {
       : `${(timeSince / 1000).toFixed(1)}s ago`
     : 'N/A';
 
-  const remoteType = hb?.lastHeartbeat?.type;
   const remoteStatus = hb?.lastHeartbeat?.systemStatus;
 
   return (
@@ -57,10 +56,6 @@ export function StatusDisplay() {
           <tr>
             <td>Last RX</td>
             <td>{lastRxTime} ({timeSinceStr})</td>
-          </tr>
-          <tr>
-            <td>Remote Type</td>
-            <td>{remoteType != null ? remoteType : '-'}</td>
           </tr>
           <tr>
             <td>Remote Status</td>

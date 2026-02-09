@@ -26,7 +26,7 @@ function LogRow({ entry }: { entry: MessageLogEntry }) {
       <td>SEQ:{entry.seq}</td>
       <td>
         {!isTx && entry.sysid != null && (
-          <>SYS:{entry.sysid} COMP:{entry.compid} TYPE:{entry.type} STATE:{entry.systemStatus}</>
+          <>SYS:{entry.sysid} COMP:{entry.compid} STATE:{entry.systemStatus}</>
         )}
       </td>
     </tr>

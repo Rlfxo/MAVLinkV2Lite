@@ -10,8 +10,6 @@ import {
   MAVLINK_STX_V2,
   MAVLINK_MSG_ID_HEARTBEAT,
   getCrcExtra,
-  MAV_TYPE,
-  MAV_AUTOPILOT,
   MAV_STATE,
   MAVLINK_VERSION
 } from './constants';
@@ -93,36 +91,15 @@ export function encodeMavlink(
  * Encode HEARTBEAT message payload
  *
  * Serializes HEARTBEAT payload into binary format.
- * Payload structure: <I5B (little-endian: uint32_t + 5x uint8_t)
+ * Payload: system_status(1) + mavlink_version(1) = 2 bytes
  *
  * @param params - HEARTBEAT payload parameters
- * @returns Serialized payload (9 bytes)
+ * @returns Serialized payload (2 bytes)
  */
 function encodeHeartbeatPayload(params: HeartbeatPayload): Uint8Array {
-  const payload = new Uint8Array(9);
-  const view = new DataView(payload.buffer);
-
-  let offset = 0;
-
-  // custom_mode (uint32_t, little-endian)
-  view.setUint32(offset, params.customMode, true);
-  offset += 4;
-
-  // type (uint8_t)
-  view.setUint8(offset++, params.type);
-
-  // autopilot (uint8_t)
-  view.setUint8(offset++, params.autopilot);
-
-  // base_mode (uint8_t)
-  view.setUint8(offset++, params.baseMode);
-
-  // system_status (uint8_t)
-  view.setUint8(offset++, params.systemStatus);
-
-  // mavlink_version (uint8_t)
-  view.setUint8(offset++, params.mavlinkVersion);
-
+  const payload = new Uint8Array(2);
+  payload[0] = params.systemStatus;
+  payload[1] = params.mavlinkVersion;
   return payload;
 }
 
@@ -134,43 +111,19 @@ function encodeHeartbeatPayload(params: HeartbeatPayload): Uint8Array {
  *
  * @param params - HEARTBEAT message parameters
  * @returns Complete MAVLink HEARTBEAT frame
- *
- * @example
- * ```typescript
- * // PC sending heartbeat to charger
- * const frame = encodeHeartbeat({
- *   sysid: 255,              // PC system ID
- *   compid: 0,               // Main component
- *   seq: txSeq++,            // Increment sequence
- *   type: MAV_TYPE.GCS,
- *   systemStatus: MAV_STATE.ACTIVE,
- *   mavlinkVersion: MAVLINK_VERSION
- * });
- * serialPort.write(frame);
- * ```
  */
 export function encodeHeartbeat(params: {
   sysid: number;
   compid: number;
   seq: number;
-  customMode?: number;
-  type: number;
-  autopilot?: number;
-  baseMode?: number;
   systemStatus: number;
   mavlinkVersion: number;
 }): Uint8Array {
-  // Build payload
   const payload = encodeHeartbeatPayload({
-    customMode: params.customMode ?? 0,
-    type: params.type,
-    autopilot: params.autopilot ?? MAV_AUTOPILOT.GENERIC,
-    baseMode: params.baseMode ?? 0,
     systemStatus: params.systemStatus,
     mavlinkVersion: params.mavlinkVersion,
   });
 
-  // Encode complete message
   return encodeMavlink(
     params.sysid,
     params.compid,
@@ -185,41 +138,23 @@ export function encodeHeartbeat(params: {
  *
  * Parses binary HEARTBEAT payload into structured data.
  *
- * @param payload - Raw payload bytes (must be 9 bytes)
+ * @param payload - Raw payload bytes (must be 2 bytes)
  * @returns Parsed HEARTBEAT payload
  * @throws Error if payload length is incorrect
- *
- * @example
- * ```typescript
- * const message = parser.parseByte(byte);
- * if (message && message.msgid === MAVLINK_MSG_ID_HEARTBEAT) {
- *   const heartbeat = decodeHeartbeatPayload(message.payload);
- *   console.log('System status:', heartbeat.systemStatus);
- * }
- * ```
  */
 export function decodeHeartbeatPayload(payload: Uint8Array): HeartbeatPayload {
-  if (payload.length !== 9) {
-    throw new Error(`Invalid HEARTBEAT payload length: ${payload.length} (expected 9)`);
+  if (payload.length !== 2) {
+    throw new Error(`Invalid HEARTBEAT payload length: ${payload.length} (expected 2)`);
   }
 
-  const view = new DataView(payload.buffer, payload.byteOffset, payload.byteLength);
-  let offset = 0;
-
   return {
-    customMode: view.getUint32(offset, true), // little-endian
-    type: view.getUint8(offset += 4),
-    autopilot: view.getUint8(offset += 1),
-    baseMode: view.getUint8(offset += 1),
-    systemStatus: view.getUint8(offset += 1),
-    mavlinkVersion: view.getUint8(offset += 1),
+    systemStatus: payload[0],
+    mavlinkVersion: payload[1],
   };
 }
 
 /**
  * Helper: Create PC HEARTBEAT message
- *
- * Convenience function to create a HEARTBEAT from PC (Ground Control Station).
  *
  * @param seq - Sequence number
  * @param sysid - System ID (default: 255 for PC)
@@ -231,8 +166,7 @@ export function createPcHeartbeat(seq: number, sysid: number = 255, compid: numb
     sysid,
     compid,
     seq,
-    type: MAV_TYPE.GCS,
-    systemStatus: MAV_STATE.ACTIVE,
+    systemStatus: MAV_STATE.RUN,
     mavlinkVersion: MAVLINK_VERSION,
   });
 }
@@ -240,25 +174,22 @@ export function createPcHeartbeat(seq: number, sysid: number = 255, compid: numb
 /**
  * Helper: Create Charger HEARTBEAT message
  *
- * Convenience function to create a HEARTBEAT from DC Charger.
- *
  * @param seq - Sequence number
  * @param sysid - System ID (default: 1 for charger)
- * @param compid - Component ID (default: 0 for main)
- * @param systemStatus - System status (default: ACTIVE)
+ * @param compid - Component ID (default: 1 for main)
+ * @param systemStatus - System status (default: RUN)
  * @returns Complete HEARTBEAT frame
  */
 export function createChargerHeartbeat(
   seq: number,
   sysid: number = 1,
-  compid: number = 0,
-  systemStatus: number = MAV_STATE.ACTIVE
+  compid: number = 1,
+  systemStatus: number = MAV_STATE.RUN
 ): Uint8Array {
   return encodeHeartbeat({
     sysid,
     compid,
     seq,
-    type: MAV_TYPE.CHARGING_STATION,
     systemStatus,
     mavlinkVersion: MAVLINK_VERSION,
   });

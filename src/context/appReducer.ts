@@ -20,7 +20,6 @@ export interface MessageLogEntry {
   seq: number;
   sysid?: number;
   compid?: number;
-  type?: number;
   systemStatus?: number;
 }
 
