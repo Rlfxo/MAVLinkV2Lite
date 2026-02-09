@@ -1,0 +1,343 @@
+/* ============================================================
+   MAVLink V2 Lite Monitor - Application Styles
+   ============================================================ */
+
+:root {
+  --bg: #1a1a2e;
+  --bg-panel: #16213e;
+  --bg-input: #0f3460;
+  --text: #e0e0e0;
+  --text-dim: #8892a0;
+  --accent: #0275d8;
+  --success: #5cb85c;
+  --danger: #d9534f;
+  --warning: #f0ad4e;
+  --border: #2a3a5c;
+  --radius: 6px;
+  --font-mono: 'SF Mono', 'Consolas', 'Monaco', monospace;
+}
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  font-size: 13px;
+  line-height: 1.4;
+  overflow: hidden;
+  height: 100vh;
+}
+
+#root {
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+/* ---- App Layout ---- */
+
+.app {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  overflow: hidden;
+}
+
+.app-header {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  padding: 10px 16px;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+.app-header h1 {
+  font-size: 16px;
+  font-weight: 700;
+  color: #fff;
+}
+
+.app-subtitle {
+  font-size: 12px;
+  color: var(--text-dim);
+}
+
+.app-main {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  padding: 8px;
+  gap: 8px;
+  overflow: hidden;
+}
+
+.top-row {
+  display: flex;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.top-row > .panel {
+  flex: 1;
+}
+
+/* ---- Panel ---- */
+
+.panel {
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 10px 12px;
+}
+
+.panel h2 {
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--text-dim);
+  margin-bottom: 8px;
+}
+
+.panel h3 {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-dim);
+  margin: 8px 0 4px;
+}
+
+/* ---- Connection Panel ---- */
+
+.connection-controls {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+
+.port-row {
+  display: flex;
+  gap: 6px;
+}
+
+.port-row select {
+  flex: 1;
+  padding: 5px 8px;
+  background: var(--bg-input);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  font-size: 12px;
+  outline: none;
+}
+
+.port-row select:focus {
+  border-color: var(--accent);
+}
+
+.btn-row {
+  display: flex;
+  gap: 6px;
+}
+
+/* ---- Buttons ---- */
+
+.btn {
+  padding: 5px 14px;
+  border: none;
+  border-radius: var(--radius);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: opacity 0.15s;
+}
+
+.btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.btn:hover:not(:disabled) {
+  opacity: 0.85;
+}
+
+.btn-primary {
+  background: var(--accent);
+  color: #fff;
+}
+
+.btn-secondary {
+  background: var(--border);
+  color: var(--text);
+}
+
+.btn-danger {
+  background: var(--danger);
+  color: #fff;
+}
+
+.btn-small {
+  padding: 2px 8px;
+  font-size: 11px;
+}
+
+/* ---- Status Badge ---- */
+
+.status-badge {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px;
+  border-left: 3px solid;
+  border-radius: 0 var(--radius) var(--radius) 0;
+  background: rgba(255, 255, 255, 0.03);
+  font-size: 12px;
+  font-family: var(--font-mono);
+}
+
+.status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.status-path {
+  color: var(--text-dim);
+  font-size: 11px;
+  margin-left: auto;
+}
+
+/* ---- Error ---- */
+
+.error-msg {
+  margin-top: 6px;
+  padding: 4px 8px;
+  background: rgba(217, 83, 79, 0.15);
+  border: 1px solid var(--danger);
+  border-radius: var(--radius);
+  color: var(--danger);
+  font-size: 11px;
+  font-family: var(--font-mono);
+}
+
+/* ---- Info Table ---- */
+
+.info-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
+
+.info-table td {
+  padding: 2px 0;
+}
+
+.info-table td:first-child {
+  color: var(--text-dim);
+  width: 100px;
+}
+
+.info-table td:last-child {
+  text-align: right;
+  font-weight: 600;
+}
+
+/* ---- Message Log ---- */
+
+.panel-log {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  min-height: 0;
+}
+
+.log-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+.log-header h2 {
+  margin-bottom: 0;
+}
+
+.log-count {
+  font-size: 11px;
+  color: var(--text-dim);
+  margin-left: auto;
+}
+
+.log-scroll {
+  flex: 1;
+  overflow-y: auto;
+  min-height: 0;
+}
+
+.log-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-family: var(--font-mono);
+  font-size: 11px;
+}
+
+.log-table tr {
+  border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+}
+
+.log-table td {
+  padding: 2px 6px 2px 0;
+  white-space: nowrap;
+}
+
+.log-time {
+  color: var(--text-dim);
+  width: 90px;
+}
+
+.log-dir {
+  font-weight: 700;
+  width: 30px;
+}
+
+.log-tx .log-dir {
+  color: var(--warning);
+}
+
+.log-rx .log-dir {
+  color: var(--success);
+}
+
+.log-empty {
+  color: var(--text-dim);
+  text-align: center;
+  padding: 20px 0 !important;
+}
+
+/* ---- Scrollbar ---- */
+
+::-webkit-scrollbar {
+  width: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--text-dim);
+}

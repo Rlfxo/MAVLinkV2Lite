@@ -7,7 +7,8 @@
 
 import { EventEmitter } from 'events';
 import { SerialPort } from 'serialport';
-import type { PortInfo as SerialPortInfo } from '@serialport/bindings-cpp';
+// @ts-ignore - bindings-interface types exist but export resolution fails
+import type { PortInfo as SerialPortInfo } from '@serialport/bindings-interface';
 import {
   SERIAL_BAUD_RATE,
   SERIAL_DATA_BITS,
