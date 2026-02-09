@@ -113,64 +113,54 @@ describe('CRC-16-CCITT-FALSE', () => {
 
   describe('MAVLink Frame CRC Test', () => {
     it('should calculate correct CRC for MAVLink V2 HEARTBEAT frame', () => {
-      // Sample MAVLink V2 HEARTBEAT frame data (without STX and CRC)
-      // Format: [LEN][INC_FLAGS][CMP_FLAGS][SEQ][SYS_ID][COMP_ID][MSG_ID(3)][PAYLOAD(9)]
+      // New 2-byte HEARTBEAT: PC (SYSID=255, COMPID=0, SEQ=0)
+      // Format: [LEN][INC_FLAGS][CMP_FLAGS][SEQ][SYS_ID][COMP_ID][MSG_ID(3)][PAYLOAD(2)]
       const frameData = new Uint8Array([
-        0x09,              // LEN (9 bytes payload)
+        0x02,              // LEN (2 bytes payload)
         0x00,              // INC_FLAGS
         0x00,              // CMP_FLAGS
         0x00,              // SEQ
-        0x01,              // SYS_ID
-        0x01,              // COMP_ID
+        0xFF,              // SYS_ID (255 = PC)
+        0x00,              // COMP_ID
         0x00, 0x00, 0x00,  // MSG_ID (0 = HEARTBEAT)
-        // PAYLOAD (9 bytes - heartbeat data)
-        0x00, 0x00, 0x00, 0x00,  // custom_mode (uint32_t, little-endian)
-        0x1F,              // type (31 = MAV_TYPE_CHARGING_STATION)
-        0x00,              // autopilot
-        0x00,              // base_mode
-        0x04,              // system_status (4 = MAV_STATE_ACTIVE)
-        0x03,              // mavlink_version (3 for V2)
+        // PAYLOAD (2 bytes)
+        0x03,              // system_status (3 = RUN)
+        0x03,              // mavlink_version (3)
       ]);
 
-      // CRC extra for HEARTBEAT (message ID 0)
-      const crcExtra = 50;
+      // CRC extra for HEARTBEAT (message ID 0) = 142
+      const crcExtra = 142;
 
       // Calculate CRC (data + CRC extra byte)
       let crc = crc16Calculate(frameData);
       crc = crc16Accumulate(crc, crcExtra);
 
-      // This should match the Python reference implementation
-      // Note: The exact expected value will be verified against Python output
-      expect(crc).toBeGreaterThan(0);
-      expect(crc).toBeLessThanOrEqual(0xFFFF);
-
-      // Verify CRC is calculated (non-initial value)
-      expect(crc).not.toBe(0xFFFF);
+      // Expected CRC from PROTOCOL.md: 0x6A19
+      expect(crc).toBe(0x6A19);
     });
 
     it('should verify MAVLink frame with embedded CRC', () => {
-      // Create a complete MAVLink frame with CRC
+      // Charger HEARTBEAT: SYSID=1, COMPID=1, SEQ=0
       const frameData = new Uint8Array([
-        0x09,              // LEN
+        0x02,              // LEN
         0x00,              // INC_FLAGS
         0x00,              // CMP_FLAGS
         0x00,              // SEQ
-        0x01,              // SYS_ID
+        0x01,              // SYS_ID (1 = Charger)
         0x01,              // COMP_ID
         0x00, 0x00, 0x00,  // MSG_ID
-        0x00, 0x00, 0x00, 0x00,  // custom_mode
-        0x1F,              // type
-        0x00,              // autopilot
-        0x00,              // base_mode
-        0x04,              // system_status
+        0x03,              // system_status (3 = RUN)
         0x03,              // mavlink_version
       ]);
 
-      const crcExtra = 50;
+      const crcExtra = 142;
 
       // Calculate CRC
       let expectedCrc = crc16Calculate(frameData);
       expectedCrc = crc16Accumulate(expectedCrc, crcExtra);
+
+      // Expected CRC from PROTOCOL.md: 0x01E4
+      expect(expectedCrc).toBe(0x01E4);
 
       // Create complete frame with CRC
       const completeFrame = new Uint8Array(frameData.length + 2);
@@ -178,11 +168,9 @@ describe('CRC-16-CCITT-FALSE', () => {
       completeFrame[frameData.length] = expectedCrc & 0xFF;
       completeFrame[frameData.length + 1] = (expectedCrc >> 8) & 0xFF;
 
-      // Verify (excluding CRC extra byte - that's handled by the protocol layer)
-      // For this test, we manually verify the calculated CRC matches
+      // Verify round-trip
       const calculatedCrc = crc16Calculate(frameData);
       const accumulatedCrc = crc16Accumulate(calculatedCrc, crcExtra);
-
       expect(accumulatedCrc).toBe(expectedCrc);
     });
   });

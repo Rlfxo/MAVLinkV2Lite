@@ -106,21 +106,21 @@ CRC Extra는 메시지 구조의 변경을 감지하기 위한 시드값이다.
 
 | Message ID | Message Name | CRC Extra |
 |------------|-------------|-----------|
-| 0 | HEARTBEAT | 50 |
-| 10001 | CHARGER_STATUS | 123 |
-| 10002 | SENSOR_DATA | 87 |
-| 10100 | CHARGER_COMMAND | 45 |
-| 10101 | RELAY_CONTROL | 200 |
-| 10200 | CONFIG_REQUEST | 100 |
-| 10201 | CONFIG_RESPONSE | 101 |
+| 0 | HEARTBEAT | 142 |
+| 10001 | CHARGER_STATUS | 66 |
+| 10002 | SENSOR_DATA | 120 |
+| 10100 | CHARGER_COMMAND | 193 |
+| 10101 | MANUAL_CONTROL | 239 |
+| 10200 | CONFIG_REQUEST | 142 |
+| 10201 | CONFIG_RESPONSE | 128 |
 
 ### CRC Pseudocode
 
 ```
+// CRC-16-CCITT-FALSE with 256-entry lookup table
 function crc16_accumulate(crc: uint16, byte: uint8) -> uint16:
-    tmp = byte ^ (crc & 0xFF)
-    tmp = tmp ^ ((tmp << 4) & 0xFF)
-    return (crc >> 8) ^ (tmp << 8) ^ (tmp << 3) ^ (tmp >> 4)
+    tmp = byte ^ (crc >> 8)
+    return ((crc << 8) ^ CRC16_TABLE[tmp]) & 0xFFFF
 
 function crc16_calculate(data: byte[], crc_extra: uint8) -> uint16:
     crc = 0xFFFF
@@ -130,17 +130,21 @@ function crc16_calculate(data: byte[], crc_extra: uint8) -> uint16:
     return crc
 ```
 
+CRC16_TABLE은 CRC-16-CCITT (poly=0x1021)의 표준 256-entry lookup table이다.
+
 ### CRC Verification Example
 
-HEARTBEAT 메시지 (PC → Charger):
+HEARTBEAT 메시지 (PC → Charger, SEQ=0):
 ```
-Frame:  FD 02 00 00 00 FF 00 00 00 00  03 03  XX XX
+Frame:  FD 02 00 00 00 FF 00 00 00 00  03 03  19 6A
         |  |                              |pld|  |CRC|
         |  +-- LEN=2                              |
         +-- STX                                   |
                                                   |
-CRC Input: [02 00 00 00 FF 00 00 00 00] + [03 03] + [32]
-           |--- header (9 bytes) ---|     |2 B|    |CRC Extra=50(0x32)|
+CRC Input: [02 00 00 00 FF 00 00 00 00] + [03 03] + [8E]
+           |--- header (9 bytes) ---|     |2 B|    |CRC Extra=142(0x8E)|
+
+Result:  CRC = 0x6A19 → CRC_L=0x19, CRC_H=0x6A
 ```
 
 ---
@@ -433,13 +437,13 @@ Example: `0x00010203` → v1.2.3
 
 | MSG ID | Name | Direction | Rate | Payload | CRC Extra | Status |
 |--------|------|-----------|------|---------|-----------|--------|
-| 0 | HEARTBEAT | Bidirectional | 1 Hz | 2 B | TBD | Redesign |
-| 10001 | CHARGER_STATUS | Board → PC | 10 Hz | 16 B | TBD | Redesign |
-| 10002 | SENSOR_DATA | Board → PC | 2 Hz | 52 B | TBD | Redesign |
-| 10100 | CHARGER_COMMAND | PC → Board | On cmd | 3 B | TBD | Redesign |
-| 10101 | MANUAL_CONTROL | PC → Board | On cmd | 6 B | TBD | Redesign |
-| 10200 | CONFIG_REQUEST | PC → Board | On req | 0 B | 100 | Phase 4 |
-| 10201 | CONFIG_RESPONSE | Board → PC | On req | 36 B | TBD | Redesign |
+| 0 | HEARTBEAT | Bidirectional | 1 Hz | 2 B | 142 | Defined |
+| 10001 | CHARGER_STATUS | Board → PC | 10 Hz | 16 B | 66 | Defined |
+| 10002 | SENSOR_DATA | Board → PC | 2 Hz | 52 B | 120 | Defined |
+| 10100 | CHARGER_COMMAND | PC → Board | On cmd | 3 B | 193 | Defined |
+| 10101 | MANUAL_CONTROL | PC → Board | On cmd | 6 B | 239 | Defined |
+| 10200 | CONFIG_REQUEST | PC → Board | On req | 0 B | 142 | Defined |
+| 10201 | CONFIG_RESPONSE | Board → PC | On req | 36 B | 128 | Defined |
 
 ---
 
@@ -470,7 +474,7 @@ PC                                       DC Charger
      |                                          |
      |------- HEARTBEAT (1Hz) ----------------->|
      |------- CHARGER_COMMAND (on demand) ----->|
-     |------- RELAY_CONTROL (on demand) ------->|
+     |------- MANUAL_CONTROL (on demand) ----->|
      |                                          |
 ```
 
@@ -510,8 +514,8 @@ Byte  Hex   Description
  9    00    MSGID_H
 10    03    system_status (3 = RUN)
 11    03    mavlink_version (3)
-12    XX    CRC_L
-13    XX    CRC_H
+12    19    CRC_L (0x6A19)
+13    6A    CRC_H
 ────────────────────────────────────
 Total: 14 bytes
 ```
@@ -525,7 +529,7 @@ Byte  Hex   Description
  1    02    LEN (2)
  2    00    IFLAGS
  3    00    CFLAGS
- 4    XX    SEQ
+ 4    00    SEQ (sequence = 0)
  5    01    SYSID (1 = Charger)
  6    01    COMPID (1)
  7    00    MSGID_L (0 = HEARTBEAT)
@@ -533,8 +537,8 @@ Byte  Hex   Description
  9    00    MSGID_H
 10    03    system_status (3 = RUN)
 11    03    mavlink_version (3)
-12    XX    CRC_L
-13    XX    CRC_H
+12    E4    CRC_L (0x01E4)
+13    01    CRC_H
 ────────────────────────────────────
 Total: 14 bytes
 ```

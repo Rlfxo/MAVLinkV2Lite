@@ -2,19 +2,17 @@
  * MAVLink Parser Unit Tests
  *
  * Tests the parser state machine implementation and verifies
- * correct parsing of MAVLink V2 frames.
+ * correct parsing of MAVLink V2 frames with 2-byte HEARTBEAT.
  */
 
 import { describe, it, expect, beforeEach } from 'vitest';
 import { MAVLinkParser } from '../../electron/protocol/parser';
-import { encodeHeartbeat, createPcHeartbeat, createChargerHeartbeat } from '../../electron/protocol/encoder';
+import { encodeMavlink, encodeHeartbeat, createPcHeartbeat, createChargerHeartbeat } from '../../electron/protocol/encoder';
 import {
   MAVLINK_MSG_ID_HEARTBEAT,
-  MAV_TYPE,
   MAV_STATE,
   MAVLINK_VERSION,
 } from '../../electron/protocol/constants';
-import { ParseState } from '../../electron/protocol/types';
 
 describe('MAVLink Parser', () => {
   let parser: MAVLinkParser;
@@ -40,19 +38,19 @@ describe('MAVLink Parser', () => {
       expect(message!.sysid).toBe(255);
       expect(message!.compid).toBe(0);
       expect(message!.seq).toBe(5);
-      expect(message!.payload.length).toBe(9);
+      expect(message!.payload.length).toBe(2);
     });
 
-    it('should parse Python reference HEARTBEAT frame', () => {
-      // Python reference frame:
-      // FD 09 00 00 00 01 01 00 00 00 00 00 00 00 1F 00 00 04 03 D8 68
-      const pythonFrame = new Uint8Array([
-        0xFD, 0x09, 0x00, 0x00, 0x00, 0x01, 0x01, 0x00, 0x00, 0x00,
-        0x00, 0x00, 0x00, 0x00, 0x1F, 0x00, 0x00, 0x04, 0x03, 0xD8, 0x68
+    it('should parse known PC HEARTBEAT frame', () => {
+      // From PROTOCOL.md wire format example:
+      // FD 02 00 00 00 FF 00 00 00 00 03 03 19 6A
+      const knownFrame = new Uint8Array([
+        0xFD, 0x02, 0x00, 0x00, 0x00, 0xFF, 0x00, 0x00, 0x00, 0x00,
+        0x03, 0x03, 0x19, 0x6A
       ]);
 
       let message = null;
-      for (const byte of pythonFrame) {
+      for (const byte of knownFrame) {
         const result = parser.parseByte(byte);
         if (result) {
           message = result;
@@ -61,16 +59,28 @@ describe('MAVLink Parser', () => {
 
       expect(message).not.toBeNull();
       expect(message!.msgid).toBe(0);
-      expect(message!.sysid).toBe(1);
-      expect(message!.compid).toBe(1);
+      expect(message!.sysid).toBe(255);
+      expect(message!.compid).toBe(0);
       expect(message!.seq).toBe(0);
-      expect(message!.checksum).toBe(0x68D8);
+      expect(message!.checksum).toBe(0x6A19);
 
       // Verify payload
-      expect(message!.payload.length).toBe(9);
-      expect(Array.from(message!.payload)).toEqual([
-        0x00, 0x00, 0x00, 0x00, 0x1F, 0x00, 0x00, 0x04, 0x03
+      expect(message!.payload.length).toBe(2);
+      expect(Array.from(message!.payload)).toEqual([0x03, 0x03]);
+    });
+
+    it('should parse known Charger HEARTBEAT frame', () => {
+      // From PROTOCOL.md: SYSID=1, COMPID=1, SEQ=0, status=RUN(3), version=3
+      // CRC = 0x01E4
+      const chargerFrame = new Uint8Array([
+        0xFD, 0x02, 0x00, 0x00, 0x00, 0x01, 0x01, 0x00, 0x00, 0x00,
+        0x03, 0x03, 0xE4, 0x01
       ]);
+
+      const messages = parser.parseBuffer(chargerFrame);
+      expect(messages.length).toBe(1);
+      expect(messages[0].sysid).toBe(1);
+      expect(messages[0].compid).toBe(1);
     });
 
     it('should handle multiple consecutive frames', () => {
@@ -88,18 +98,15 @@ describe('MAVLink Parser', () => {
       expect(messages[2].seq).toBe(2);
     });
 
-    it('should parse frame with empty payload', () => {
+    it('should parse frame encoded by encodeHeartbeat', () => {
       const frame = encodeHeartbeat({
         sysid: 1,
         compid: 0,
         seq: 0,
-        type: MAV_TYPE.GCS,
-        systemStatus: MAV_STATE.ACTIVE,
+        systemStatus: MAV_STATE.RUN,
         mavlinkVersion: MAVLINK_VERSION,
       });
 
-      // Manually create frame with 0-byte payload (for testing)
-      // This is artificial but tests the state machine
       const messages = parser.parseBuffer(frame);
       expect(messages.length).toBe(1);
     });
@@ -125,7 +132,7 @@ describe('MAVLink Parser', () => {
       const frame = createPcHeartbeat(0);
 
       // Corrupt a payload byte
-      frame[15] ^= 0xFF;
+      frame[10] ^= 0xFF;
 
       const messages = parser.parseBuffer(frame);
 
@@ -187,7 +194,6 @@ describe('MAVLink Parser', () => {
       const messages1 = parser.parseBuffer(partial);
       expect(messages1.length).toBe(0);
 
-      // In real usage, a timeout would trigger reset()
       // Simulate timeout recovery
       parser.reset();
 
@@ -195,7 +201,6 @@ describe('MAVLink Parser', () => {
       const newFrame = createPcHeartbeat(1);
       const messages2 = parser.parseBuffer(newFrame);
 
-      // Parser should parse the new complete frame after reset
       expect(messages2.length).toBe(1);
       expect(messages2[0].seq).toBe(1);
     });
@@ -216,12 +221,10 @@ describe('MAVLink Parser', () => {
     });
 
     it('should reset state after invalid payload length', () => {
-      // Manually create frame with invalid payload length (> 255)
       const badFrame = new Uint8Array([0xFD, 0xFF]); // LEN = 255 is valid max
       parser.parseByte(badFrame[0]);
       parser.parseByte(badFrame[1]);
 
-      // Try with length > 255 is not possible with uint8, but we can test recovery
       const goodFrame = createPcHeartbeat(0);
       const messages = parser.parseBuffer(goodFrame);
 
@@ -287,11 +290,7 @@ describe('MAVLink Parser', () => {
         sysid: 123,
         compid: 45,
         seq: 67,
-        customMode: 999,
-        type: MAV_TYPE.CHARGING_STATION,
-        autopilot: 5,
-        baseMode: 3,
-        systemStatus: MAV_STATE.CALIBRATING,
+        systemStatus: MAV_STATE.STANDBY,
         mavlinkVersion: MAVLINK_VERSION,
       };
 
@@ -305,15 +304,13 @@ describe('MAVLink Parser', () => {
       expect(parsed.compid).toBe(original.compid);
       expect(parsed.seq).toBe(original.seq);
       expect(parsed.msgid).toBe(MAVLINK_MSG_ID_HEARTBEAT);
-      expect(parsed.payload.length).toBe(9);
+      expect(parsed.payload.length).toBe(2);
     });
 
     // Note: This test is skipped because certain sequence numbers can produce
     // frames with 0xFD bytes in payload/CRC, which conflicts with frame
-    // resynchronization logic. Sequence wraparound is tested in other tests
-    // like "should handle multiple consecutive frames".
+    // resynchronization logic.
     it.skip('should handle sequence wraparound', () => {
-      // Test sequences around the 255 → 0 wraparound
       const testSeqs = [253, 254, 255, 0, 1];
 
       for (const seq of testSeqs) {
@@ -381,25 +378,13 @@ describe('MAVLink Parser', () => {
   });
 
   describe('Edge Cases', () => {
-    it('should handle maximum payload size', () => {
-      // Create frame with 255-byte payload
-      const payload = new Uint8Array(255);
-      for (let i = 0; i < 255; i++) {
-        payload[i] = i & 0xFF;
-      }
-
-      // Use generic encoder (we'd need to import it)
-      const frame = encodeHeartbeat({
-        sysid: 1,
-        compid: 0,
-        seq: 0,
-        type: MAV_TYPE.GCS,
-        systemStatus: MAV_STATE.ACTIVE,
-        mavlinkVersion: MAVLINK_VERSION,
-      });
+    it('should handle frame with empty payload (msgid with no CRC extra)', () => {
+      // Encode a message with empty payload for an unknown msgid (CRC extra = 0)
+      const frame = encodeMavlink(1, 0, 0, 99999, new Uint8Array(0));
 
       const messages = parser.parseBuffer(frame);
       expect(messages.length).toBe(1);
+      expect(messages[0].payload.length).toBe(0);
     });
 
     it('should handle rapid frame succession', () => {
