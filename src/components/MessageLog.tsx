@@ -26,7 +26,7 @@ function LogRow({ entry }: { entry: MessageLogEntry }) {
       <td>SEQ:{entry.seq}</td>
       <td>
         {!isTx && entry.sysid != null && (
-          <>SYS:{entry.sysid} COMP:{entry.compid} TYPE:{entry.type} STATE:{entry.systemStatus}</>
+          <>SYS:{entry.sysid} COMP:{entry.compid} STATE:{entry.systemStatus}</>
         )}
       </td>
     </tr>
@@ -36,30 +36,53 @@ function LogRow({ entry }: { entry: MessageLogEntry }) {
 export function MessageLog() {
   const { state, dispatch } = useAppContext();
 
+  const txLog = state.messageLog.filter((e) => e.direction === 'TX');
+  const rxLog = state.messageLog.filter((e) => e.direction === 'RX');
+
   return (
-    <div className="panel panel-log">
-      <div className="log-header">
-        <h2>Message Log</h2>
-        <span className="log-count">{state.messageLog.length} entries</span>
-        <button
-          onClick={() => dispatch({ type: 'CLEAR_LOG' })}
-          className="btn btn-small btn-secondary"
-        >
-          Clear
-        </button>
+    <div className="log-split">
+      <div className="panel panel-log">
+        <div className="log-header">
+          <h2>TX Log</h2>
+          <span className="log-count">{txLog.length}</span>
+          <button
+            onClick={() => dispatch({ type: 'CLEAR_LOG' })}
+            className="btn btn-small btn-secondary"
+          >
+            Clear
+          </button>
+        </div>
+        <div className="log-scroll">
+          <table className="log-table">
+            <tbody>
+              {txLog.map((entry) => (
+                <LogRow key={entry.id} entry={entry} />
+              ))}
+              {txLog.length === 0 && (
+                <tr><td colSpan={4} className="log-empty">No TX messages</td></tr>
+              )}
+            </tbody>
+          </table>
+        </div>
       </div>
 
-      <div className="log-scroll">
-        <table className="log-table">
-          <tbody>
-            {state.messageLog.map((entry) => (
-              <LogRow key={entry.id} entry={entry} />
-            ))}
-            {state.messageLog.length === 0 && (
-              <tr><td colSpan={4} className="log-empty">No messages yet</td></tr>
-            )}
-          </tbody>
-        </table>
+      <div className="panel panel-log">
+        <div className="log-header">
+          <h2>RX Log</h2>
+          <span className="log-count">{rxLog.length}</span>
+        </div>
+        <div className="log-scroll">
+          <table className="log-table">
+            <tbody>
+              {rxLog.map((entry) => (
+                <LogRow key={entry.id} entry={entry} />
+              ))}
+              {rxLog.length === 0 && (
+                <tr><td colSpan={4} className="log-empty">No RX messages</td></tr>
+              )}
+            </tbody>
+          </table>
+        </div>
       </div>
     </div>
   );

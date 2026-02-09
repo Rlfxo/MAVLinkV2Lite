@@ -8,14 +8,16 @@
 import { EventEmitter } from 'events';
 import { SerialPortManager } from './SerialPortManager';
 import { MAVLinkParser } from '../protocol/parser';
-import { createPcHeartbeat, decodeHeartbeatPayload } from '../protocol/encoder';
+import { createPcHeartbeat, decodeHeartbeatPayload, decodeChargerStatusPayload, decodeSensorDataPayload } from '../protocol/encoder';
 import {
   MAVLINK_MSG_ID_HEARTBEAT,
+  MAVLINK_MSG_ID_CHARGER_STATUS,
+  MAVLINK_MSG_ID_SENSOR_DATA,
   HEARTBEAT_TX_INTERVAL_MS,
   HEARTBEAT_TIMEOUT_MS,
   HEARTBEAT_CHECK_INTERVAL_MS,
 } from '../protocol/constants';
-import type { HeartbeatPayload, MAVLinkMessage } from '../protocol/types';
+import type { HeartbeatPayload, ChargerStatusPayload, SensorDataPayload, MAVLinkMessage } from '../protocol/types';
 
 /**
  * Heartbeat Manager Events
@@ -32,6 +34,8 @@ export interface HeartbeatManagerEvents {
   'heartbeat-timeout': () => void;
   'connection-established': () => void;
   'connection-lost': () => void;
+  'charger-status-received': (payload: ChargerStatusPayload, message: MAVLinkMessage) => void;
+  'sensor-data-received': (payload: SensorDataPayload, message: MAVLinkMessage) => void;
 }
 
 /**
@@ -321,6 +325,10 @@ export class HeartbeatManager extends EventEmitter {
       for (const message of messages) {
         if (message.msgid === MAVLINK_MSG_ID_HEARTBEAT) {
           this.handleHeartbeat(message);
+        } else if (message.msgid === MAVLINK_MSG_ID_CHARGER_STATUS) {
+          this.handleChargerStatus(message);
+        } else if (message.msgid === MAVLINK_MSG_ID_SENSOR_DATA) {
+          this.handleSensorData(message);
         }
       }
     });
@@ -343,6 +351,30 @@ export class HeartbeatManager extends EventEmitter {
       this.emit('heartbeat-received', payload, message);
     } catch (error) {
       // Ignore decode errors (invalid payload length, etc.)
+    }
+  }
+
+  /**
+   * Handle received CHARGER_STATUS message
+   */
+  private handleChargerStatus(message: MAVLinkMessage): void {
+    try {
+      const payload = decodeChargerStatusPayload(message.payload);
+      this.emit('charger-status-received', payload, message);
+    } catch (error) {
+      // Ignore decode errors
+    }
+  }
+
+  /**
+   * Handle received SENSOR_DATA message
+   */
+  private handleSensorData(message: MAVLinkMessage): void {
+    try {
+      const payload = decodeSensorDataPayload(message.payload);
+      this.emit('sensor-data-received', payload, message);
+    } catch (error) {
+      // Ignore decode errors
     }
   }
 }

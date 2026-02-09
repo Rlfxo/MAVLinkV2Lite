@@ -56,6 +56,20 @@ const electronAPI = {
       return () => ipcRenderer.removeListener('heartbeat:connection-lost', handler);
     },
   },
+  chargerStatus: {
+    onReceived: (callback: (data: unknown) => void) => {
+      const handler = (_event: Electron.IpcRendererEvent, data: unknown) => callback(data);
+      ipcRenderer.on('charger-status:received', handler);
+      return () => ipcRenderer.removeListener('charger-status:received', handler);
+    },
+  },
+  sensorData: {
+    onReceived: (callback: (data: unknown) => void) => {
+      const handler = (_event: Electron.IpcRendererEvent, data: unknown) => callback(data);
+      ipcRenderer.on('sensor-data:received', handler);
+      return () => ipcRenderer.removeListener('sensor-data:received', handler);
+    },
+  },
 };
 
 contextBridge.exposeInMainWorld('electron', electronAPI);

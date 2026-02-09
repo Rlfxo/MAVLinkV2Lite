@@ -27,7 +27,6 @@ export function useHeartbeat() {
         seq: data.seq,
         sysid: data.sysid,
         compid: data.compid,
-        type: data.payload.type,
         systemStatus: data.payload.systemStatus,
       };
       dispatchRef.current({ type: 'ADD_MESSAGE_LOG', payload: entry });

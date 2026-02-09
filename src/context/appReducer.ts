@@ -10,6 +10,8 @@ import type {
   HeartbeatStatus,
   ParserStats,
   ConnectionState,
+  ChargerStatusPayload,
+  SensorDataPayload,
 } from '../../electron/protocol/types';
 import type { SerialStatus } from '../../electron/serial/SerialPortManager';
 
@@ -20,7 +22,6 @@ export interface MessageLogEntry {
   seq: number;
   sysid?: number;
   compid?: number;
-  type?: number;
   systemStatus?: number;
 }
 
@@ -34,6 +35,10 @@ export interface AppState {
   messageLog: MessageLogEntry[];
   lastError: string | null;
   isConnecting: boolean;
+  lastChargerStatus: ChargerStatusPayload | null;
+  lastChargerStatusTime: number | null;
+  lastSensorData: SensorDataPayload | null;
+  lastSensorDataTime: number | null;
 }
 
 export type AppAction =
@@ -46,6 +51,8 @@ export type AppAction =
   | { type: 'ADD_MESSAGE_LOG'; payload: MessageLogEntry }
   | { type: 'SET_ERROR'; payload: string | null }
   | { type: 'SET_CONNECTING'; payload: boolean }
+  | { type: 'SET_CHARGER_STATUS'; payload: ChargerStatusPayload }
+  | { type: 'SET_SENSOR_DATA'; payload: SensorDataPayload }
   | { type: 'CLEAR_LOG' }
   | { type: 'RESET' };
 
@@ -61,6 +68,10 @@ export const initialState: AppState = {
   messageLog: [],
   lastError: null,
   isConnecting: false,
+  lastChargerStatus: null,
+  lastChargerStatusTime: null,
+  lastSensorData: null,
+  lastSensorDataTime: null,
 };
 
 export function appReducer(state: AppState, action: AppAction): AppState {
@@ -96,6 +107,12 @@ export function appReducer(state: AppState, action: AppAction): AppState {
 
     case 'SET_CONNECTING':
       return { ...state, isConnecting: action.payload };
+
+    case 'SET_CHARGER_STATUS':
+      return { ...state, lastChargerStatus: action.payload, lastChargerStatusTime: Date.now() };
+
+    case 'SET_SENSOR_DATA':
+      return { ...state, lastSensorData: action.payload, lastSensorDataTime: Date.now() };
 
     case 'CLEAR_LOG':
       return { ...state, messageLog: [] };

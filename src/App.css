@@ -87,6 +87,16 @@ body {
   flex: 1;
 }
 
+.data-row {
+  display: flex;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.data-row > .panel {
+  flex: 1;
+}
+
 /* ---- Panel ---- */
 
 .panel {
@@ -251,6 +261,14 @@ body {
 }
 
 /* ---- Message Log ---- */
+
+.log-split {
+  flex: 1;
+  display: flex;
+  gap: 8px;
+  overflow: hidden;
+  min-height: 0;
+}
 
 .panel-log {
   flex: 1;

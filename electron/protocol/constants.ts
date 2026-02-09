@@ -78,11 +78,11 @@ export const MAVLINK_MSG_ID_SENSOR_DATA = 10002;
 export const MAVLINK_MSG_ID_CHARGER_COMMAND = 10100;
 
 /**
- * RELAY_CONTROL message (custom, 10101)
- * Sent by PC to control relays
- * Controls 17 individual relays
+ * MANUAL_CONTROL message (custom, 10101)
+ * Sent by PC for JIG/test manual control
+ * Controls relays and force discharge/recharge
  */
-export const MAVLINK_MSG_ID_RELAY_CONTROL = 10101;
+export const MAVLINK_MSG_ID_MANUAL_CONTROL = 10101;
 
 /**
  * CONFIG_REQUEST message (custom, 10200)
@@ -113,13 +113,13 @@ export const MAVLINK_MSG_ID_CONFIG_RESPONSE = 10201;
  * Note: These values must match exactly with the firmware implementation.
  */
 const CRC_EXTRA_MAP: Readonly<Record<number, number>> = {
-  [MAVLINK_MSG_ID_HEARTBEAT]: 50,
-  [MAVLINK_MSG_ID_CHARGER_STATUS]: 123,
-  [MAVLINK_MSG_ID_SENSOR_DATA]: 87,
-  [MAVLINK_MSG_ID_CHARGER_COMMAND]: 45,
-  [MAVLINK_MSG_ID_RELAY_CONTROL]: 200,
-  [MAVLINK_MSG_ID_CONFIG_REQUEST]: 100,
-  [MAVLINK_MSG_ID_CONFIG_RESPONSE]: 101,
+  [MAVLINK_MSG_ID_HEARTBEAT]: 142,
+  [MAVLINK_MSG_ID_CHARGER_STATUS]: 66,
+  [MAVLINK_MSG_ID_SENSOR_DATA]: 120,
+  [MAVLINK_MSG_ID_CHARGER_COMMAND]: 193,
+  [MAVLINK_MSG_ID_MANUAL_CONTROL]: 239,
+  [MAVLINK_MSG_ID_CONFIG_REQUEST]: 142,
+  [MAVLINK_MSG_ID_CONFIG_RESPONSE]: 128,
 };
 
 /**
@@ -130,7 +130,7 @@ const CRC_EXTRA_MAP: Readonly<Record<number, number>> = {
  *
  * @example
  * ```typescript
- * const crcExtra = getCrcExtra(MAVLINK_MSG_ID_HEARTBEAT);  // Returns 50
+ * const crcExtra = getCrcExtra(MAVLINK_MSG_ID_HEARTBEAT);  // Returns 142
  * ```
  */
 export function getCrcExtra(msgid: number): number {
@@ -156,59 +156,21 @@ export const SYSID_PC = 255;
  */
 export const COMPID_MAIN = 0;
 
-/**
- * Component ID for relay controller
- */
-export const COMPID_RELAY = 1;
 
 // ============================================================================
 // MAVLink Heartbeat Constants
 // ============================================================================
 
 /**
- * MAV_TYPE values (from standard MAVLink)
- */
-export enum MAV_TYPE {
-  /** Generic micro air vehicle */
-  GENERIC = 0,
-  /** Ground control station */
-  GCS = 6,
-  /** Charging station (custom type) */
-  CHARGING_STATION = 31,
-}
-
-/**
- * MAV_AUTOPILOT values (from standard MAVLink)
- */
-export enum MAV_AUTOPILOT {
-  /** No valid autopilot */
-  GENERIC = 0,
-  /** Invalid autopilot */
-  INVALID = 8,
-}
-
-/**
- * MAV_STATE values (from standard MAVLink)
+ * MAV_STATE values (simplified for DC Charger)
  */
 export enum MAV_STATE {
-  /** Uninitialized system */
   UNINIT = 0,
-  /** System is booting */
   BOOT = 1,
-  /** System is calibrating */
-  CALIBRATING = 2,
-  /** System is in standby */
-  STANDBY = 3,
-  /** System is active */
-  ACTIVE = 4,
-  /** System is in critical state */
-  CRITICAL = 5,
-  /** System has encountered an emergency */
-  EMERGENCY = 6,
-  /** System is powering down */
-  POWEROFF = 7,
-  /** System terminated */
-  FLIGHT_TERMINATION = 8,
+  STANDBY = 2,
+  RUN = 3,
+  ERROR = 4,
+  SHUTDOWN = 5,
 }
 
 /**

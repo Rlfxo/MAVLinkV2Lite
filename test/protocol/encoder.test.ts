@@ -1,7 +1,7 @@
 /**
  * MAVLink Message Encoder Unit Tests
  *
- * Tests the encoder implementation against Python reference frames
+ * Tests the encoder implementation for the new 2-byte HEARTBEAT format
  * and verifies proper message encoding.
  */
 
@@ -15,7 +15,6 @@ import {
 } from '../../electron/protocol/encoder';
 import {
   MAVLINK_MSG_ID_HEARTBEAT,
-  MAV_TYPE,
   MAV_STATE,
   MAVLINK_VERSION,
 } from '../../electron/protocol/constants';
@@ -68,44 +67,19 @@ describe('MAVLink Encoder', () => {
   });
 
   describe('encodeHeartbeat - HEARTBEAT Encoder', () => {
-    it('should match Python reference frame exactly', () => {
-      // Python reference frame (from test_mavlink_protocol.py):
-      // FD 09 00 00 00 01 01 00 00 00 00 00 00 00 1F 00 00 04 03 D8 68
-      const pythonFrame = new Uint8Array([
-        0xFD, 0x09, 0x00, 0x00, 0x00, 0x01, 0x01, 0x00, 0x00, 0x00,
-        0x00, 0x00, 0x00, 0x00, 0x1F, 0x00, 0x00, 0x04, 0x03, 0xD8, 0x68
-      ]);
-
-      const frame = encodeHeartbeat({
-        sysid: 1,
-        compid: 1,
-        seq: 0,
-        customMode: 0,
-        type: 31, // MAV_TYPE_CHARGING_STATION
-        autopilot: 0,
-        baseMode: 0,
-        systemStatus: 4, // MAV_STATE_ACTIVE
-        mavlinkVersion: 3,
-      });
-
-      // Frame should match Python output byte-for-byte
-      expect(frame.length).toBe(pythonFrame.length);
-      expect(Array.from(frame)).toEqual(Array.from(pythonFrame));
-    });
-
-    it('should encode PC heartbeat correctly', () => {
+    it('should encode 2-byte HEARTBEAT payload', () => {
       const frame = encodeHeartbeat({
         sysid: 255,
         compid: 0,
         seq: 0,
-        type: MAV_TYPE.GCS,
-        systemStatus: MAV_STATE.ACTIVE,
+        systemStatus: MAV_STATE.RUN,
         mavlinkVersion: MAVLINK_VERSION,
       });
 
-      expect(frame.length).toBe(21); // STX(1) + Header(9) + Payload(9) + CRC(2)
+      // STX(1) + Header(9) + Payload(2) + CRC(2) = 14 bytes
+      expect(frame.length).toBe(14);
       expect(frame[0]).toBe(0xFD);   // STX
-      expect(frame[1]).toBe(9);      // LEN = 9
+      expect(frame[1]).toBe(2);      // LEN = 2
       expect(frame[5]).toBe(255);    // SYSID = 255
       expect(frame[6]).toBe(0);      // COMPID = 0
 
@@ -114,28 +88,25 @@ describe('MAVLink Encoder', () => {
       expect(frame[8]).toBe(0);
       expect(frame[9]).toBe(0);
 
-      // Payload should be 9 bytes
-      const payload = frame.subarray(10, 19);
-      expect(payload.length).toBe(9);
+      // Payload (2 bytes)
+      expect(frame[10]).toBe(MAV_STATE.RUN);      // system_status
+      expect(frame[11]).toBe(MAVLINK_VERSION);     // mavlink_version
     });
 
-    it('should use default values for optional parameters', () => {
+    it('should encode charger HEARTBEAT with SYSID=1', () => {
       const frame = encodeHeartbeat({
         sysid: 1,
         compid: 0,
         seq: 0,
-        type: MAV_TYPE.GCS,
-        systemStatus: MAV_STATE.ACTIVE,
-        mavlinkVersion: MAVLINK_VERSION,
+        systemStatus: MAV_STATE.RUN,
+        mavlinkVersion: 3,
       });
 
-      // Decode payload to check defaults
-      const payload = frame.subarray(10, 19);
-      const decoded = decodeHeartbeatPayload(payload);
-
-      expect(decoded.customMode).toBe(0);
-      expect(decoded.autopilot).toBe(0);
-      expect(decoded.baseMode).toBe(0);
+      expect(frame.length).toBe(14);
+      expect(frame[5]).toBe(1);   // SYSID = 1
+      expect(frame[6]).toBe(0);   // COMPID = 0
+      expect(frame[10]).toBe(MAV_STATE.RUN);
+      expect(frame[11]).toBe(3);
     });
 
     it('should handle sequence number wraparound', () => {
@@ -143,8 +114,7 @@ describe('MAVLink Encoder', () => {
         sysid: 1,
         compid: 0,
         seq: 255,
-        type: MAV_TYPE.GCS,
-        systemStatus: MAV_STATE.ACTIVE,
+        systemStatus: MAV_STATE.RUN,
         mavlinkVersion: MAVLINK_VERSION,
       });
 
@@ -154,60 +124,41 @@ describe('MAVLink Encoder', () => {
 
   describe('decodeHeartbeatPayload', () => {
     it('should decode HEARTBEAT payload correctly', () => {
-      // Create and encode a heartbeat
-      const frame = encodeHeartbeat({
-        sysid: 1,
-        compid: 1,
-        seq: 0,
-        customMode: 12345,
-        type: 31,
-        autopilot: 8,
-        baseMode: 5,
-        systemStatus: 4,
-        mavlinkVersion: 3,
-      });
-
-      // Extract and decode payload
-      const payload = frame.subarray(10, 19);
+      const payload = new Uint8Array([MAV_STATE.ERROR, 3]);
       const decoded = decodeHeartbeatPayload(payload);
 
-      expect(decoded.customMode).toBe(12345);
-      expect(decoded.type).toBe(31);
-      expect(decoded.autopilot).toBe(8);
-      expect(decoded.baseMode).toBe(5);
-      expect(decoded.systemStatus).toBe(4);
+      expect(decoded.systemStatus).toBe(MAV_STATE.ERROR);
       expect(decoded.mavlinkVersion).toBe(3);
     });
 
     it('should throw error for invalid payload length', () => {
-      const invalidPayload = new Uint8Array(8); // Should be 9
+      const invalidPayload = new Uint8Array(9); // Should be 2
       expect(() => {
         decodeHeartbeatPayload(invalidPayload);
       }).toThrow('Invalid HEARTBEAT payload length');
     });
 
-    it('should handle little-endian uint32 correctly', () => {
-      // custom_mode = 0x12345678 (305419896 decimal)
-      const frame = encodeHeartbeat({
-        sysid: 1,
-        compid: 0,
-        seq: 0,
-        customMode: 0x12345678,
-        type: MAV_TYPE.GCS,
-        systemStatus: MAV_STATE.ACTIVE,
-        mavlinkVersion: MAVLINK_VERSION,
-      });
+    it('should throw error for 1-byte payload', () => {
+      expect(() => {
+        decodeHeartbeatPayload(new Uint8Array(1));
+      }).toThrow('Invalid HEARTBEAT payload length');
+    });
 
-      const payload = frame.subarray(10, 19);
-      const decoded = decodeHeartbeatPayload(payload);
+    it('should decode all MAV_STATE values', () => {
+      const states = [
+        MAV_STATE.UNINIT,
+        MAV_STATE.BOOT,
+        MAV_STATE.STANDBY,
+        MAV_STATE.RUN,
+        MAV_STATE.ERROR,
+        MAV_STATE.SHUTDOWN,
+      ];
 
-      expect(decoded.customMode).toBe(0x12345678);
-
-      // Check little-endian byte order in payload
-      expect(payload[0]).toBe(0x78); // Low byte
-      expect(payload[1]).toBe(0x56);
-      expect(payload[2]).toBe(0x34);
-      expect(payload[3]).toBe(0x12); // High byte
+      for (const state of states) {
+        const payload = new Uint8Array([state, 3]);
+        const decoded = decodeHeartbeatPayload(payload);
+        expect(decoded.systemStatus).toBe(state);
+      }
     });
   });
 
@@ -216,16 +167,16 @@ describe('MAVLink Encoder', () => {
       const frame = createPcHeartbeat(5, 255, 0);
 
       expect(frame[0]).toBe(0xFD);   // STX
+      expect(frame[1]).toBe(2);      // LEN = 2
       expect(frame[4]).toBe(5);      // SEQ
       expect(frame[5]).toBe(255);    // SYSID
       expect(frame[6]).toBe(0);      // COMPID
 
       // Decode payload
-      const payload = frame.subarray(10, 19);
+      const payload = frame.subarray(10, 12);
       const decoded = decodeHeartbeatPayload(payload);
 
-      expect(decoded.type).toBe(MAV_TYPE.GCS);
-      expect(decoded.systemStatus).toBe(MAV_STATE.ACTIVE);
+      expect(decoded.systemStatus).toBe(MAV_STATE.RUN);
       expect(decoded.mavlinkVersion).toBe(MAVLINK_VERSION);
     });
 
@@ -245,10 +196,9 @@ describe('MAVLink Encoder', () => {
       expect(frame[6]).toBe(0);      // COMPID
 
       // Decode payload
-      const payload = frame.subarray(10, 19);
+      const payload = frame.subarray(10, 12);
       const decoded = decodeHeartbeatPayload(payload);
 
-      expect(decoded.type).toBe(MAV_TYPE.CHARGING_STATION);
       expect(decoded.systemStatus).toBe(MAV_STATE.STANDBY);
       expect(decoded.mavlinkVersion).toBe(MAVLINK_VERSION);
     });
@@ -259,21 +209,17 @@ describe('MAVLink Encoder', () => {
       expect(frame[5]).toBe(1);      // Default SYSID for charger
       expect(frame[6]).toBe(0);      // Default COMPID
 
-      const payload = frame.subarray(10, 19);
+      const payload = frame.subarray(10, 12);
       const decoded = decodeHeartbeatPayload(payload);
 
-      expect(decoded.systemStatus).toBe(MAV_STATE.ACTIVE); // Default status
+      expect(decoded.systemStatus).toBe(MAV_STATE.RUN); // Default status
     });
   });
 
   describe('Round-trip Encoding/Decoding', () => {
     it('should preserve data through encode-decode cycle', () => {
       const original = {
-        customMode: 999,
-        type: MAV_TYPE.CHARGING_STATION,
-        autopilot: 5,
-        baseMode: 3,
-        systemStatus: MAV_STATE.CALIBRATING,
+        systemStatus: MAV_STATE.SHUTDOWN,
         mavlinkVersion: MAVLINK_VERSION,
       };
 
@@ -284,7 +230,7 @@ describe('MAVLink Encoder', () => {
         ...original,
       });
 
-      const payload = frame.subarray(10, 19);
+      const payload = frame.subarray(10, 12);
       const decoded = decodeHeartbeatPayload(payload);
 
       expect(decoded).toEqual(original);
@@ -299,10 +245,9 @@ describe('MAVLink Encoder', () => {
       expect(frame[0]).toBe(0xFD);
 
       // Header fields
-      expect(frame[1]).toBeGreaterThanOrEqual(0);  // LEN
-      expect(frame[1]).toBeLessThanOrEqual(255);
-      expect(frame[2]).toBe(0);  // INC_FLAGS
-      expect(frame[3]).toBe(0);  // CMP_FLAGS
+      expect(frame[1]).toBe(2);    // LEN = 2
+      expect(frame[2]).toBe(0);    // INC_FLAGS
+      expect(frame[3]).toBe(0);    // CMP_FLAGS
 
       // Message ID should be 0 for HEARTBEAT
       const msgid = frame[7] | (frame[8] << 8) | (frame[9] << 16);
@@ -312,6 +257,18 @@ describe('MAVLink Encoder', () => {
       const crcOffset = frame.length - 2;
       const crc = frame[crcOffset] | (frame[crcOffset + 1] << 8);
       expect(crc).toBeGreaterThan(0);
+    });
+
+    it('should match PROTOCOL.md wire format example', () => {
+      // PC HEARTBEAT: SEQ=0, SYSID=255, COMPID=0, status=RUN(3), version=3
+      // Expected CRC: 0x6A19 (CRC_L=0x19, CRC_H=0x6A)
+      const frame = createPcHeartbeat(0, 255, 0);
+
+      expect(Array.from(frame)).toEqual([
+        0xFD, 0x02, 0x00, 0x00, 0x00, 0xFF, 0x00, 0x00, 0x00, 0x00,
+        0x03, 0x03,
+        0x19, 0x6A
+      ]);
     });
   });
 });
