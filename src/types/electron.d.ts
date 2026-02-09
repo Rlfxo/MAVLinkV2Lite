@@ -7,6 +7,8 @@
 import type {
   PortInfo,
   HeartbeatPayload,
+  ChargerStatusPayload,
+  SensorDataPayload,
   HeartbeatStatus,
   ParserStats,
 } from '../../electron/protocol/types';
@@ -22,6 +24,22 @@ export interface HeartbeatReceivedData {
 
 export interface HeartbeatSentData {
   seq: number;
+  timestamp: number;
+}
+
+export interface ChargerStatusReceivedData {
+  payload: ChargerStatusPayload;
+  seq: number;
+  sysid: number;
+  compid: number;
+  timestamp: number;
+}
+
+export interface SensorDataReceivedData {
+  payload: SensorDataPayload;
+  seq: number;
+  sysid: number;
+  compid: number;
   timestamp: number;
 }
 
@@ -42,6 +60,12 @@ export interface ElectronAPI {
     onTimeout(callback: () => void): () => void;
     onConnectionEstablished(callback: () => void): () => void;
     onConnectionLost(callback: () => void): () => void;
+  };
+  chargerStatus: {
+    onReceived(callback: (data: ChargerStatusReceivedData) => void): () => void;
+  };
+  sensorData: {
+    onReceived(callback: (data: SensorDataReceivedData) => void): () => void;
   };
 }
 

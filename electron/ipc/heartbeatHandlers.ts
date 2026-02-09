@@ -7,7 +7,7 @@
 
 import { ipcMain, BrowserWindow } from 'electron';
 import { HeartbeatManager } from '../serial/HeartbeatManager';
-import type { HeartbeatPayload, MAVLinkMessage } from '../protocol/types';
+import type { HeartbeatPayload, ChargerStatusPayload, SensorDataPayload, MAVLinkMessage } from '../protocol/types';
 
 /**
  * Register heartbeat-related IPC handlers
@@ -68,6 +68,34 @@ export function registerHeartbeatHandlers(
     const win = getWindow();
     if (win && !win.isDestroyed()) {
       win.webContents.send('heartbeat:connection-lost');
+    }
+  });
+
+  // Forward CHARGER_STATUS events to renderer
+  heartbeatManager.on('charger-status-received', (payload: ChargerStatusPayload, message: MAVLinkMessage) => {
+    const win = getWindow();
+    if (win && !win.isDestroyed()) {
+      win.webContents.send('charger-status:received', {
+        payload,
+        seq: message.seq,
+        sysid: message.sysid,
+        compid: message.compid,
+        timestamp: Date.now(),
+      });
+    }
+  });
+
+  // Forward SENSOR_DATA events to renderer
+  heartbeatManager.on('sensor-data-received', (payload: SensorDataPayload, message: MAVLinkMessage) => {
+    const win = getWindow();
+    if (win && !win.isDestroyed()) {
+      win.webContents.send('sensor-data:received', {
+        payload,
+        seq: message.seq,
+        sysid: message.sysid,
+        compid: message.compid,
+        timestamp: Date.now(),
+      });
     }
   });
 }
