@@ -70,6 +70,22 @@ const electronAPI = {
       return () => ipcRenderer.removeListener('sensor-data:received', handler);
     },
   },
+  chargerCommand: {
+    send: (payload: { maxPowerKw: number; command: number }) =>
+      ipcRenderer.invoke('command:send-charger-command', payload),
+    onSent: (callback: (data: unknown) => void) => {
+      const handler = (_event: Electron.IpcRendererEvent, data: unknown) => callback(data);
+      ipcRenderer.on('charger-command:sent', handler);
+      return () => ipcRenderer.removeListener('charger-command:sent', handler);
+    },
+  },
+  commandAck: {
+    onReceived: (callback: (data: unknown) => void) => {
+      const handler = (_event: Electron.IpcRendererEvent, data: unknown) => callback(data);
+      ipcRenderer.on('command-ack:received', handler);
+      return () => ipcRenderer.removeListener('command-ack:received', handler);
+    },
+  },
 };
 
 contextBridge.exposeInMainWorld('electron', electronAPI);

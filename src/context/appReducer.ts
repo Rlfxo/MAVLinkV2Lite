@@ -12,6 +12,7 @@ import type {
   ConnectionState,
   ChargerStatusPayload,
   SensorDataPayload,
+  CommandAckPayload,
 } from '../../electron/protocol/types';
 import type { SerialStatus } from '../../electron/serial/SerialPortManager';
 
@@ -39,6 +40,9 @@ export interface AppState {
   lastChargerStatusTime: number | null;
   lastSensorData: SensorDataPayload | null;
   lastSensorDataTime: number | null;
+  lastCommandAck: CommandAckPayload | null;
+  lastCommandAckTime: number | null;
+  isSendingCommand: boolean;
 }
 
 export type AppAction =
@@ -53,6 +57,8 @@ export type AppAction =
   | { type: 'SET_CONNECTING'; payload: boolean }
   | { type: 'SET_CHARGER_STATUS'; payload: ChargerStatusPayload }
   | { type: 'SET_SENSOR_DATA'; payload: SensorDataPayload }
+  | { type: 'SET_COMMAND_ACK'; payload: CommandAckPayload }
+  | { type: 'SET_SENDING_COMMAND'; payload: boolean }
   | { type: 'CLEAR_LOG' }
   | { type: 'RESET' };
 
@@ -72,6 +78,9 @@ export const initialState: AppState = {
   lastChargerStatusTime: null,
   lastSensorData: null,
   lastSensorDataTime: null,
+  lastCommandAck: null,
+  lastCommandAckTime: null,
+  isSendingCommand: false,
 };
 
 export function appReducer(state: AppState, action: AppAction): AppState {
@@ -113,6 +122,12 @@ export function appReducer(state: AppState, action: AppAction): AppState {
 
     case 'SET_SENSOR_DATA':
       return { ...state, lastSensorData: action.payload, lastSensorDataTime: Date.now() };
+
+    case 'SET_COMMAND_ACK':
+      return { ...state, lastCommandAck: action.payload, lastCommandAckTime: Date.now(), isSendingCommand: false };
+
+    case 'SET_SENDING_COMMAND':
+      return { ...state, isSendingCommand: action.payload };
 
     case 'CLEAR_LOG':
       return { ...state, messageLog: [] };

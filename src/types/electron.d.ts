@@ -9,6 +9,8 @@ import type {
   HeartbeatPayload,
   ChargerStatusPayload,
   SensorDataPayload,
+  ChargerCommandPayload,
+  CommandAckPayload,
   HeartbeatStatus,
   ParserStats,
 } from '../../electron/protocol/types';
@@ -43,6 +45,20 @@ export interface SensorDataReceivedData {
   timestamp: number;
 }
 
+export interface ChargerCommandSentData {
+  payload: ChargerCommandPayload;
+  seq: number;
+  timestamp: number;
+}
+
+export interface CommandAckReceivedData {
+  payload: CommandAckPayload;
+  seq: number;
+  sysid: number;
+  compid: number;
+  timestamp: number;
+}
+
 export interface ElectronAPI {
   serial: {
     listPorts(): Promise<PortInfo[]>;
@@ -66,6 +82,13 @@ export interface ElectronAPI {
   };
   sensorData: {
     onReceived(callback: (data: SensorDataReceivedData) => void): () => void;
+  };
+  chargerCommand: {
+    send(payload: ChargerCommandPayload): Promise<void>;
+    onSent(callback: (data: ChargerCommandSentData) => void): () => void;
+  };
+  commandAck: {
+    onReceived(callback: (data: CommandAckReceivedData) => void): () => void;
   };
 }
 

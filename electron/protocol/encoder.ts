@@ -11,11 +11,13 @@ import {
   MAVLINK_MSG_ID_HEARTBEAT,
   MAVLINK_MSG_ID_CHARGER_STATUS,
   MAVLINK_MSG_ID_SENSOR_DATA,
+  MAVLINK_MSG_ID_CHARGER_COMMAND,
+  MAVLINK_MSG_ID_COMMAND_ACK,
   getCrcExtra,
   MAV_STATE,
   MAVLINK_VERSION
 } from './constants';
-import { HeartbeatPayload, ChargerStatusPayload, SensorDataPayload } from './types';
+import { HeartbeatPayload, ChargerStatusPayload, SensorDataPayload, ChargerCommandPayload, CommandAckPayload } from './types';
 
 /**
  * Encode a generic MAVLink V2 message
@@ -395,6 +397,124 @@ export function encodeSensorData(params: {
     params.compid,
     params.seq,
     MAVLINK_MSG_ID_SENSOR_DATA,
+    payload
+  );
+}
+
+// ============================================================================
+// CHARGER_COMMAND (MSG_ID: 10100, 3 bytes)
+// ============================================================================
+
+/**
+ * Encode CHARGER_COMMAND payload (3 bytes)
+ *
+ * Layout:
+ *   [0-1]  maxPowerKw  uint16 LE
+ *   [2]    command      uint8
+ */
+function encodeChargerCommandPayload(params: ChargerCommandPayload): Uint8Array {
+  const payload = new Uint8Array(3);
+  const dv = new DataView(payload.buffer, payload.byteOffset, payload.byteLength);
+
+  dv.setUint16(0, params.maxPowerKw, true);
+  payload[2] = params.command & 0xFF;
+
+  return payload;
+}
+
+/**
+ * Decode CHARGER_COMMAND payload (3 bytes)
+ */
+export function decodeChargerCommandPayload(payload: Uint8Array): ChargerCommandPayload {
+  if (payload.length !== 3) {
+    throw new Error(`Invalid CHARGER_COMMAND payload length: ${payload.length} (expected 3)`);
+  }
+
+  const dv = new DataView(payload.buffer, payload.byteOffset, payload.byteLength);
+
+  return {
+    maxPowerKw: dv.getUint16(0, true),
+    command: payload[2],
+  };
+}
+
+/**
+ * Encode CHARGER_COMMAND message (complete MAVLink frame)
+ */
+export function encodeChargerCommand(params: {
+  sysid: number;
+  compid: number;
+  seq: number;
+} & ChargerCommandPayload): Uint8Array {
+  const payload = encodeChargerCommandPayload({
+    maxPowerKw: params.maxPowerKw,
+    command: params.command,
+  });
+
+  return encodeMavlink(
+    params.sysid,
+    params.compid,
+    params.seq,
+    MAVLINK_MSG_ID_CHARGER_COMMAND,
+    payload
+  );
+}
+
+// ============================================================================
+// COMMAND_ACK (MSG_ID: 10102, 3 bytes)
+// ============================================================================
+
+/**
+ * Encode COMMAND_ACK payload (3 bytes)
+ *
+ * Layout:
+ *   [0-1]  targetMsgId  uint16 LE
+ *   [2]    result       uint8
+ */
+function encodeCommandAckPayload(params: CommandAckPayload): Uint8Array {
+  const payload = new Uint8Array(3);
+  const dv = new DataView(payload.buffer, payload.byteOffset, payload.byteLength);
+
+  dv.setUint16(0, params.targetMsgId, true);
+  payload[2] = params.result & 0xFF;
+
+  return payload;
+}
+
+/**
+ * Decode COMMAND_ACK payload (3 bytes)
+ */
+export function decodeCommandAckPayload(payload: Uint8Array): CommandAckPayload {
+  if (payload.length !== 3) {
+    throw new Error(`Invalid COMMAND_ACK payload length: ${payload.length} (expected 3)`);
+  }
+
+  const dv = new DataView(payload.buffer, payload.byteOffset, payload.byteLength);
+
+  return {
+    targetMsgId: dv.getUint16(0, true),
+    result: payload[2],
+  };
+}
+
+/**
+ * Encode COMMAND_ACK message (complete MAVLink frame)
+ */
+export function encodeCommandAck(params: {
+  sysid: number;
+  compid: number;
+  seq: number;
+} & CommandAckPayload): Uint8Array {
+  const payload = encodeCommandAckPayload({
+    targetMsgId: params.targetMsgId,
+    result: params.result,
+  });
+
+  return encodeMavlink(
+    params.sysid,
+    params.compid,
+    params.seq,
+    MAVLINK_MSG_ID_COMMAND_ACK,
     payload
   );
 }

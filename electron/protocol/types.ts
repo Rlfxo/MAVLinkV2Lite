@@ -155,6 +155,15 @@ export interface SensorDataPayload {
 // ============================================================================
 
 /**
+ * Charger command types
+ */
+export enum ChargerCommandType {
+  STOP = 0,
+  DISCHARGE = 1,
+  RECHARGE = 2,
+}
+
+/**
  * CHARGER_COMMAND message payload
  *
  * Charging control commands, sent by PC to DC Charger.
@@ -163,7 +172,33 @@ export interface SensorDataPayload {
  */
 export interface ChargerCommandPayload {
   maxPowerKw: number;   // uint16_t - Max power (kW)
-  command: number;      // uint8_t - Command type (0=STOP, 1=DISCHARGE, 2=RECHARGE)
+  command: number;      // uint8_t - Command type (ChargerCommandType)
+}
+
+// ============================================================================
+// COMMAND_ACK Message (Message ID: 10102)
+// ============================================================================
+
+/**
+ * Command result codes
+ */
+export enum CommandResult {
+  ACCEPTED = 0,
+  DENIED = 1,
+  ERROR = 2,
+  UNSUPPORTED = 3,
+}
+
+/**
+ * COMMAND_ACK message payload
+ *
+ * Acknowledgment from DC Charger in response to commands.
+ *
+ * Payload size: 3 bytes
+ */
+export interface CommandAckPayload {
+  targetMsgId: number;  // uint16_t - ACK target MSG_ID
+  result: number;       // uint8_t - CommandResult
 }
 
 // ============================================================================

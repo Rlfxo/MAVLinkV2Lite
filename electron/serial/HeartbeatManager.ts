@@ -8,16 +8,17 @@
 import { EventEmitter } from 'events';
 import { SerialPortManager } from './SerialPortManager';
 import { MAVLinkParser } from '../protocol/parser';
-import { createPcHeartbeat, decodeHeartbeatPayload, decodeChargerStatusPayload, decodeSensorDataPayload } from '../protocol/encoder';
+import { createPcHeartbeat, decodeHeartbeatPayload, decodeChargerStatusPayload, decodeSensorDataPayload, encodeChargerCommand, decodeCommandAckPayload } from '../protocol/encoder';
 import {
   MAVLINK_MSG_ID_HEARTBEAT,
   MAVLINK_MSG_ID_CHARGER_STATUS,
   MAVLINK_MSG_ID_SENSOR_DATA,
+  MAVLINK_MSG_ID_COMMAND_ACK,
   HEARTBEAT_TX_INTERVAL_MS,
   HEARTBEAT_TIMEOUT_MS,
   HEARTBEAT_CHECK_INTERVAL_MS,
 } from '../protocol/constants';
-import type { HeartbeatPayload, ChargerStatusPayload, SensorDataPayload, MAVLinkMessage } from '../protocol/types';
+import type { HeartbeatPayload, ChargerStatusPayload, SensorDataPayload, ChargerCommandPayload, CommandAckPayload, MAVLinkMessage } from '../protocol/types';
 
 /**
  * Heartbeat Manager Events
@@ -36,6 +37,8 @@ export interface HeartbeatManagerEvents {
   'connection-lost': () => void;
   'charger-status-received': (payload: ChargerStatusPayload, message: MAVLinkMessage) => void;
   'sensor-data-received': (payload: SensorDataPayload, message: MAVLinkMessage) => void;
+  'charger-command-sent': (payload: ChargerCommandPayload, seq: number) => void;
+  'command-ack-received': (payload: CommandAckPayload, message: MAVLinkMessage) => void;
 }
 
 /**
@@ -329,6 +332,8 @@ export class HeartbeatManager extends EventEmitter {
           this.handleChargerStatus(message);
         } else if (message.msgid === MAVLINK_MSG_ID_SENSOR_DATA) {
           this.handleSensorData(message);
+        } else if (message.msgid === MAVLINK_MSG_ID_COMMAND_ACK) {
+          this.handleCommandAck(message);
         }
       }
     });
@@ -373,6 +378,34 @@ export class HeartbeatManager extends EventEmitter {
     try {
       const payload = decodeSensorDataPayload(message.payload);
       this.emit('sensor-data-received', payload, message);
+    } catch (error) {
+      // Ignore decode errors
+    }
+  }
+
+  /**
+   * Send CHARGER_COMMAND message (on-demand, not periodic)
+   */
+  public sendChargerCommand(commandPayload: ChargerCommandPayload): void {
+    const frame = encodeChargerCommand({
+      sysid: this.sysid,
+      compid: this.compid,
+      seq: this.txSeq,
+      ...commandPayload,
+    });
+    this.serialManager.write(frame);
+    const sentSeq = this.txSeq;
+    this.txSeq = (this.txSeq + 1) & 0xFF;
+    this.emit('charger-command-sent', commandPayload, sentSeq);
+  }
+
+  /**
+   * Handle received COMMAND_ACK message
+   */
+  private handleCommandAck(message: MAVLinkMessage): void {
+    try {
+      const payload = decodeCommandAckPayload(message.payload);
+      this.emit('command-ack-received', payload, message);
     } catch (error) {
       // Ignore decode errors
     }

@@ -2,9 +2,9 @@
 
 DC Charger - PC 간 UART 시리얼 통신 프로토콜 사양서
 
-**Version**: 1.0
-**Date**: 2026-02-09
-**Status**: HEARTBEAT 구현 완료, 나머지 메시지 Phase 3-4 예정
+**Version**: 1.1
+**Date**: 2026-02-11
+**Status**: Phase 4 - CHARGER_COMMAND / COMMAND_ACK 구현 완료
 
 ---
 
@@ -110,6 +110,7 @@ CRC Extra는 메시지 구조의 변경을 감지하기 위한 시드값이다.
 | 10001 | CHARGER_STATUS | 66 |
 | 10002 | SENSOR_DATA | 120 |
 | 10100 | CHARGER_COMMAND | 193 |
+| 10102 | COMMAND_ACK | 222 |
 | 10101 | MANUAL_CONTROL | 239 |
 | 10200 | CONFIG_REQUEST | 142 |
 | 10201 | CONFIG_RESPONSE | 128 |
@@ -300,9 +301,10 @@ Total: 52 bytes
 
 ---
 
-### 4.4 CHARGER_COMMAND (MSG_ID: 10100) - Phase 4
+### 4.4 CHARGER_COMMAND (MSG_ID: 10100)
 
 충전기 제어 명령. PC → DC Charger, On-demand.
+전송 후 DC Charger는 COMMAND_ACK(10102)로 응답한다.
 
 | Direction | Rate | Payload Size |
 |-----------|------|-------------|
@@ -313,13 +315,13 @@ Total: 52 bytes
 ```
 Offset  Size    Type        Field             Description              Unit
 ──────────────────────────────────────────────────────────────────────────────
-0       2       uint16_t    max_power_kW      최대 전력                  kW
+0       2       uint16_t    max_power_kw      최대 전력                  kW
 2       1       uint8_t     command           명령 타입
 ──────────────────────────────────────────────────────────────────────────────
 Total: 3 bytes
 ```
 
-#### Command Types
+#### command Values
 
 | Value | Name | Description |
 |-------|------|-------------|
@@ -329,7 +331,52 @@ Total: 3 bytes
 
 ---
 
-### 4.5 MANUAL_CONTROL (MSG_ID: 10101) - Phase 4
+### 4.5 COMMAND_ACK (MSG_ID: 10102)
+
+명령 응답. DC Charger → PC.
+CHARGER_COMMAND(10100) 수신 시 처리 결과를 ACK로 회신한다.
+
+| Direction | Rate | Payload Size |
+|-----------|------|-------------|
+| Board → PC | On ACK | 3 bytes |
+
+#### Payload Structure
+
+```
+Offset  Size    Type        Field             Description
+──────────────────────────────────────────────────────────────────
+0       2       uint16_t    target_msg_id     ACK 대상 MSG_ID
+2       1       uint8_t     result            처리 결과
+──────────────────────────────────────────────────────────────────
+Total: 3 bytes
+```
+
+#### result Values
+
+| Value | Name | Description |
+|-------|------|-------------|
+| 0 | ACCEPTED | 명령 수락, 실행 중 |
+| 1 | DENIED | 명령 거부 (현재 상태에서 불가) |
+| 2 | ERROR | 처리 중 에러 발생 |
+| 3 | UNSUPPORTED | 지원하지 않는 명령 |
+
+#### Sequence Diagram
+
+```
+PC (SYSID=255)                           DC Charger (SYSID=1)
+     |                                          |
+     |--- CHARGER_COMMAND (10100) ------------>|
+     |    max_power_kw=150, command=1           |
+     |                                          |  (처리)
+     |<-- COMMAND_ACK (10102) -----------------|
+     |    target_msg_id=10100, result=0         |
+     |    (ACCEPTED)                            |
+     |                                          |
+```
+
+---
+
+### 4.6 MANUAL_CONTROL (MSG_ID: 10101) - Phase 5
 
 JIG/테스트용 강제 제어 명령. PC → DC Charger, On-demand.
 매뉴얼 모드 진입 시 보드의 자율 제어를 무시하고 릴레이 및 충방전을 강제 제어한다.
@@ -379,7 +426,7 @@ manual_mode=ON일 때 릴레이 직접 제어 (bit=1: ON, bit=0: OFF)
 
 ---
 
-### 4.6 CONFIG_REQUEST (MSG_ID: 10200) - Phase 4
+### 4.7 CONFIG_REQUEST (MSG_ID: 10200) - Phase 5
 
 설정 정보 요청. PC → DC Charger, On-demand.
 
@@ -391,7 +438,7 @@ Payload 없음. 프레임 전송만으로 CONFIG_RESPONSE 응답을 트리거한
 
 ---
 
-### 4.7 CONFIG_RESPONSE (MSG_ID: 10201) - Phase 4
+### 4.8 CONFIG_RESPONSE (MSG_ID: 10201) - Phase 5
 
 설정 정보 응답. DC Charger → PC, CONFIG_REQUEST에 대한 응답.
 
@@ -420,7 +467,7 @@ Example: `0x00010203` → v1.2.3
 
 ---
 
-### 4.8 Reserved Messages (TBD)
+### 4.9 Reserved Messages (TBD)
 
 아래 메시지는 펌웨어에 MSG ID만 선언되어 있으며, payload 구조는 미정의 상태이다.
 필요 시 추후 정의한다.
@@ -437,10 +484,11 @@ Example: `0x00010203` → v1.2.3
 
 | MSG ID | Name | Direction | Rate | Payload | CRC Extra | Status |
 |--------|------|-----------|------|---------|-----------|--------|
-| 0 | HEARTBEAT | Bidirectional | 1 Hz | 2 B | 142 | Defined |
-| 10001 | CHARGER_STATUS | Board → PC | 10 Hz | 16 B | 66 | Defined |
-| 10002 | SENSOR_DATA | Board → PC | 2 Hz | 52 B | 120 | Defined |
-| 10100 | CHARGER_COMMAND | PC → Board | On cmd | 3 B | 193 | Defined |
+| 0 | HEARTBEAT | Bidirectional | 1 Hz | 2 B | 142 | Implemented |
+| 10001 | CHARGER_STATUS | Board → PC | 10 Hz | 16 B | 66 | Implemented |
+| 10002 | SENSOR_DATA | Board → PC | 2 Hz | 52 B | 120 | Implemented |
+| 10100 | CHARGER_COMMAND | PC → Board | On cmd | 3 B | 193 | Implemented |
+| 10102 | COMMAND_ACK | Board → PC | On ACK | 3 B | 222 | Implemented |
 | 10101 | MANUAL_CONTROL | PC → Board | On cmd | 6 B | 239 | Defined |
 | 10200 | CONFIG_REQUEST | PC → Board | On req | 0 B | 142 | Defined |
 | 10201 | CONFIG_RESPONSE | Board → PC | On req | 36 B | 128 | Defined |
@@ -474,6 +522,7 @@ PC                                       DC Charger
      |                                          |
      |------- HEARTBEAT (1Hz) ----------------->|
      |------- CHARGER_COMMAND (on demand) ----->|
+     |<------ COMMAND_ACK (response) ----------|
      |------- MANUAL_CONTROL (on demand) ----->|
      |                                          |
 ```

@@ -85,6 +85,13 @@ export const MAVLINK_MSG_ID_CHARGER_COMMAND = 10100;
 export const MAVLINK_MSG_ID_MANUAL_CONTROL = 10101;
 
 /**
+ * COMMAND_ACK message (custom, 10102)
+ * Sent by DC Charger as acknowledgment to commands
+ * Contains target message ID and result code
+ */
+export const MAVLINK_MSG_ID_COMMAND_ACK = 10102;
+
+/**
  * CONFIG_REQUEST message (custom, 10200)
  * Sent by PC to request configuration
  */
@@ -117,6 +124,7 @@ const CRC_EXTRA_MAP: Readonly<Record<number, number>> = {
   [MAVLINK_MSG_ID_CHARGER_STATUS]: 66,
   [MAVLINK_MSG_ID_SENSOR_DATA]: 120,
   [MAVLINK_MSG_ID_CHARGER_COMMAND]: 193,
+  [MAVLINK_MSG_ID_COMMAND_ACK]: 222,
   [MAVLINK_MSG_ID_MANUAL_CONTROL]: 239,
   [MAVLINK_MSG_ID_CONFIG_REQUEST]: 142,
   [MAVLINK_MSG_ID_CONFIG_RESPONSE]: 128,
