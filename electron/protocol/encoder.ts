@@ -11,11 +11,15 @@ import {
   MAVLINK_MSG_ID_HEARTBEAT,
   MAVLINK_MSG_ID_CHARGER_STATUS,
   MAVLINK_MSG_ID_SENSOR_DATA,
+  MAVLINK_MSG_ID_CHARGER_COMMAND,
+  MAVLINK_MSG_ID_COMMAND_ACK,
+  MAVLINK_MSG_ID_CONFIG_REQUEST,
+  MAVLINK_MSG_ID_CONFIG_RESPONSE,
   getCrcExtra,
   MAV_STATE,
   MAVLINK_VERSION
 } from './constants';
-import { HeartbeatPayload, ChargerStatusPayload, SensorDataPayload } from './types';
+import { HeartbeatPayload, ChargerStatusPayload, SensorDataPayload, ChargerCommandPayload, CommandAckPayload, ConfigResponsePayload } from './types';
 
 /**
  * Encode a generic MAVLink V2 message
@@ -109,7 +113,7 @@ function encodeHeartbeatPayload(params: HeartbeatPayload): Uint8Array {
  * Encode HEARTBEAT message
  *
  * Creates a complete HEARTBEAT message frame.
- * HEARTBEAT is sent at 1Hz to indicate system presence and status.
+ * HEARTBEAT is sent every 1000ms to indicate system presence and status.
  *
  * @param params - HEARTBEAT message parameters
  * @returns Complete MAVLink HEARTBEAT frame
@@ -395,6 +399,236 @@ export function encodeSensorData(params: {
     params.compid,
     params.seq,
     MAVLINK_MSG_ID_SENSOR_DATA,
+    payload
+  );
+}
+
+// ============================================================================
+// CHARGER_COMMAND (MSG_ID: 10100, 3 bytes)
+// ============================================================================
+
+/**
+ * Encode CHARGER_COMMAND payload (3 bytes)
+ *
+ * Layout:
+ *   [0-1]  maxPowerKw  uint16 LE
+ *   [2]    command      uint8
+ */
+function encodeChargerCommandPayload(params: ChargerCommandPayload): Uint8Array {
+  const payload = new Uint8Array(3);
+  const dv = new DataView(payload.buffer, payload.byteOffset, payload.byteLength);
+
+  dv.setUint16(0, params.maxPowerKw, true);
+  payload[2] = params.command & 0xFF;
+
+  return payload;
+}
+
+/**
+ * Decode CHARGER_COMMAND payload (3 bytes)
+ */
+export function decodeChargerCommandPayload(payload: Uint8Array): ChargerCommandPayload {
+  if (payload.length !== 3) {
+    throw new Error(`Invalid CHARGER_COMMAND payload length: ${payload.length} (expected 3)`);
+  }
+
+  const dv = new DataView(payload.buffer, payload.byteOffset, payload.byteLength);
+
+  return {
+    maxPowerKw: dv.getUint16(0, true),
+    command: payload[2],
+  };
+}
+
+/**
+ * Encode CHARGER_COMMAND message (complete MAVLink frame)
+ */
+export function encodeChargerCommand(params: {
+  sysid: number;
+  compid: number;
+  seq: number;
+} & ChargerCommandPayload): Uint8Array {
+  const payload = encodeChargerCommandPayload({
+    maxPowerKw: params.maxPowerKw,
+    command: params.command,
+  });
+
+  return encodeMavlink(
+    params.sysid,
+    params.compid,
+    params.seq,
+    MAVLINK_MSG_ID_CHARGER_COMMAND,
+    payload
+  );
+}
+
+// ============================================================================
+// COMMAND_ACK (MSG_ID: 10102, 3 bytes)
+// ============================================================================
+
+/**
+ * Encode COMMAND_ACK payload (3 bytes)
+ *
+ * Layout:
+ *   [0-1]  targetMsgId  uint16 LE
+ *   [2]    result       uint8
+ */
+function encodeCommandAckPayload(params: CommandAckPayload): Uint8Array {
+  const payload = new Uint8Array(3);
+  const dv = new DataView(payload.buffer, payload.byteOffset, payload.byteLength);
+
+  dv.setUint16(0, params.targetMsgId, true);
+  payload[2] = params.result & 0xFF;
+
+  return payload;
+}
+
+/**
+ * Decode COMMAND_ACK payload (3 bytes)
+ */
+export function decodeCommandAckPayload(payload: Uint8Array): CommandAckPayload {
+  if (payload.length !== 3) {
+    throw new Error(`Invalid COMMAND_ACK payload length: ${payload.length} (expected 3)`);
+  }
+
+  const dv = new DataView(payload.buffer, payload.byteOffset, payload.byteLength);
+
+  return {
+    targetMsgId: dv.getUint16(0, true),
+    result: payload[2],
+  };
+}
+
+/**
+ * Encode COMMAND_ACK message (complete MAVLink frame)
+ */
+export function encodeCommandAck(params: {
+  sysid: number;
+  compid: number;
+  seq: number;
+} & CommandAckPayload): Uint8Array {
+  const payload = encodeCommandAckPayload({
+    targetMsgId: params.targetMsgId,
+    result: params.result,
+  });
+
+  return encodeMavlink(
+    params.sysid,
+    params.compid,
+    params.seq,
+    MAVLINK_MSG_ID_COMMAND_ACK,
+    payload
+  );
+}
+
+// ============================================================================
+// CONFIG_REQUEST (MSG_ID: 10200, 0 bytes payload)
+// ============================================================================
+
+/**
+ * Encode CONFIG_REQUEST message (complete MAVLink frame, 0B payload)
+ */
+export function encodeConfigRequest(params: {
+  sysid: number;
+  compid: number;
+  seq: number;
+}): Uint8Array {
+  return encodeMavlink(
+    params.sysid,
+    params.compid,
+    params.seq,
+    MAVLINK_MSG_ID_CONFIG_REQUEST,
+    new Uint8Array(0)
+  );
+}
+
+// ============================================================================
+// CONFIG_RESPONSE (MSG_ID: 10201, 36 bytes)
+// ============================================================================
+
+const TEXT_ENCODER = new TextEncoder();
+const TEXT_DECODER = new TextDecoder('utf-8');
+
+/**
+ * Encode CONFIG_RESPONSE payload (36 bytes)
+ *
+ * Layout:
+ *   [0-3]   fw_version   uint32 LE
+ *   [4-7]   hw_version   uint32 LE
+ *   [8-23]  model_name   char[16] null-terminated
+ *   [24-35] build_date   char[12]
+ */
+function encodeConfigResponsePayload(params: ConfigResponsePayload): Uint8Array {
+  const payload = new Uint8Array(36);
+  const dv = new DataView(payload.buffer, payload.byteOffset, payload.byteLength);
+
+  dv.setUint32(0, params.fwVersion, true);
+  dv.setUint32(4, params.hwVersion, true);
+
+  // model_name: char[16] null-terminated
+  const nameBytes = TEXT_ENCODER.encode(params.modelName);
+  const nameLen = Math.min(nameBytes.length, 15); // leave room for null
+  payload.set(nameBytes.subarray(0, nameLen), 8);
+  // remaining bytes are already 0 (null-terminated)
+
+  // build_date: char[12]
+  const dateBytes = TEXT_ENCODER.encode(params.buildDate);
+  const dateLen = Math.min(dateBytes.length, 12);
+  payload.set(dateBytes.subarray(0, dateLen), 24);
+
+  return payload;
+}
+
+/**
+ * Decode CONFIG_RESPONSE payload (36 bytes)
+ */
+export function decodeConfigResponsePayload(payload: Uint8Array): ConfigResponsePayload {
+  if (payload.length !== 36) {
+    throw new Error(`Invalid CONFIG_RESPONSE payload length: ${payload.length} (expected 36)`);
+  }
+
+  const dv = new DataView(payload.buffer, payload.byteOffset, payload.byteLength);
+
+  // model_name: trim at first null byte
+  const nameSlice = payload.subarray(8, 24);
+  let nameEnd = nameSlice.indexOf(0);
+  if (nameEnd === -1) nameEnd = 16;
+  const modelName = TEXT_DECODER.decode(nameSlice.subarray(0, nameEnd));
+
+  // build_date: trim at first null byte
+  const dateSlice = payload.subarray(24, 36);
+  let dateEnd = dateSlice.indexOf(0);
+  if (dateEnd === -1) dateEnd = 12;
+  const buildDate = TEXT_DECODER.decode(dateSlice.subarray(0, dateEnd));
+
+  return {
+    fwVersion: dv.getUint32(0, true),
+    hwVersion: dv.getUint32(4, true),
+    modelName,
+    buildDate,
+  };
+}
+
+/**
+ * Encode CONFIG_RESPONSE message (complete MAVLink frame)
+ */
+export function encodeConfigResponse(params: {
+  sysid: number;
+  compid: number;
+  seq: number;
+} & ConfigResponsePayload): Uint8Array {
+  const payload = encodeConfigResponsePayload({
+    fwVersion: params.fwVersion,
+    hwVersion: params.hwVersion,
+    modelName: params.modelName,
+    buildDate: params.buildDate,
+  });
+
+  return encodeMavlink(
+    params.sysid,
+    params.compid,
+    params.seq,
+    MAVLINK_MSG_ID_CONFIG_RESPONSE,
     payload
   );
 }

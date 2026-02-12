@@ -260,6 +260,125 @@ body {
   font-weight: 600;
 }
 
+/* ---- Command Panel ---- */
+
+.command-controls {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.command-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.command-label {
+  font-size: 12px;
+  color: var(--text-dim);
+  width: 100px;
+  flex-shrink: 0;
+}
+
+.command-input {
+  flex: 1;
+  padding: 4px 8px;
+  background: var(--bg-input);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  font-size: 12px;
+  font-family: var(--font-mono);
+  outline: none;
+}
+
+.command-input:focus {
+  border-color: var(--accent);
+}
+
+.command-input:disabled {
+  opacity: 0.4;
+}
+
+.command-select {
+  flex: 1;
+  padding: 4px 8px;
+  background: var(--bg-input);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  font-size: 12px;
+  outline: none;
+}
+
+.command-select:focus {
+  border-color: var(--accent);
+}
+
+.command-select:disabled {
+  opacity: 0.4;
+}
+
+.ack-result {
+  margin-top: 8px;
+  padding: 4px 8px;
+  border-radius: var(--radius);
+  font-size: 12px;
+  font-family: var(--font-mono);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.ack-label {
+  color: var(--text-dim);
+}
+
+.ack-value {
+  font-weight: 700;
+}
+
+.ack-target {
+  color: var(--text-dim);
+  font-size: 11px;
+}
+
+.ack-accepted {
+  background: rgba(92, 184, 92, 0.15);
+  border: 1px solid var(--success);
+  color: var(--success);
+}
+
+.ack-denied {
+  background: rgba(217, 83, 79, 0.15);
+  border: 1px solid var(--danger);
+  color: var(--danger);
+}
+
+.ack-error {
+  background: rgba(217, 83, 79, 0.15);
+  border: 1px solid var(--danger);
+  color: var(--danger);
+}
+
+.ack-warning {
+  background: rgba(240, 173, 78, 0.15);
+  border: 1px solid var(--warning);
+  color: var(--warning);
+}
+
+/* ---- Config Panel ---- */
+
+.config-panel .btn {
+  margin-bottom: 8px;
+  width: 100%;
+}
+
+.config-table td:first-child {
+  width: 90px;
+}
+
 /* ---- Message Log ---- */
 
 .log-split {

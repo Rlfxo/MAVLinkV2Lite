@@ -83,7 +83,7 @@ export interface MAVLinkHeader {
  * HEARTBEAT message payload
  *
  * Simplified HEARTBEAT for DC Charger protocol.
- * Sent at 1Hz by both PC and DC Charger for keep-alive.
+ * Sent at 1000ms by both PC and DC Charger for keep-alive.
  *
  * Payload size: 2 bytes
  */
@@ -102,7 +102,7 @@ export interface HeartbeatPayload {
 /**
  * CHARGER_STATUS message payload
  *
- * Charger operational status, sent by DC Charger at 10Hz.
+ * Charger operational status, sent by DC Charger every 500ms.
  * Contains discharging/recharging state, BMS info, relay, and diagnostics.
  *
  * Payload size: 16 bytes (Phase 3)
@@ -126,7 +126,7 @@ export interface ChargerStatusPayload {
 /**
  * SENSOR_DATA message payload
  *
- * Sensor readings, sent by DC Charger at 2Hz.
+ * Sensor readings, sent by DC Charger every 1000ms.
  * Contains environment, IMU, DCGF, power meter, and IMD data.
  *
  * Payload size: 52 bytes (Phase 3)
@@ -155,6 +155,15 @@ export interface SensorDataPayload {
 // ============================================================================
 
 /**
+ * Charger command types
+ */
+export enum ChargerCommandType {
+  STOP = 0,
+  DISCHARGE = 1,
+  RECHARGE = 2,
+}
+
+/**
  * CHARGER_COMMAND message payload
  *
  * Charging control commands, sent by PC to DC Charger.
@@ -163,7 +172,52 @@ export interface SensorDataPayload {
  */
 export interface ChargerCommandPayload {
   maxPowerKw: number;   // uint16_t - Max power (kW)
-  command: number;      // uint8_t - Command type (0=STOP, 1=DISCHARGE, 2=RECHARGE)
+  command: number;      // uint8_t - Command type (ChargerCommandType)
+}
+
+// ============================================================================
+// COMMAND_ACK Message (Message ID: 10102)
+// ============================================================================
+
+/**
+ * Command result codes
+ */
+export enum CommandResult {
+  ACCEPTED = 0,
+  DENIED = 1,
+  ERROR = 2,
+  UNSUPPORTED = 3,
+}
+
+/**
+ * COMMAND_ACK message payload
+ *
+ * Acknowledgment from DC Charger in response to commands.
+ *
+ * Payload size: 3 bytes
+ */
+export interface CommandAckPayload {
+  targetMsgId: number;  // uint16_t - ACK target MSG_ID
+  result: number;       // uint8_t - CommandResult
+}
+
+// ============================================================================
+// CONFIG_RESPONSE Message (Message ID: 10201)
+// ============================================================================
+
+/**
+ * CONFIG_RESPONSE message payload
+ *
+ * Charger firmware/hardware information, sent by DC Charger in response to CONFIG_REQUEST.
+ * CONFIG_REQUEST (10200) has 0-byte payload — no dedicated type needed.
+ *
+ * Payload size: 36 bytes
+ */
+export interface ConfigResponsePayload {
+  fwVersion: number;    // uint32_t LE — 0x00XXYYZZ → XX.YY.ZZ
+  hwVersion: number;    // uint32_t LE
+  modelName: string;    // char[16] null-terminated UTF-8
+  buildDate: string;    // char[12] YYYYMMDDHHMM
 }
 
 // ============================================================================

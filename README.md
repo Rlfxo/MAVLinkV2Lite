@@ -27,7 +27,7 @@ DC Charger와 PC 간 UART 통신을 위한 MAVLink V2 Lite 기반 모니터링 �
 
 #### Day 4-5: Serial 통신 레이어 (CLI 기반)
 - [x] **SerialPortManager 구현** (포트 연결, 데이터 송수신)
-- [x] **HeartbeatManager 구현** (1Hz TX, RX 모니터링, timeout)
+- [x] **HeartbeatManager 구현** (1000ms TX, RX 모니터링, timeout)
 - [x] **CLI 테스트 스크립트** (`scripts/test-heartbeat.ts`)
 
 ### 📊 테스트 현황
@@ -45,13 +45,13 @@ DC Charger와 PC 간 UART 통신을 위한 MAVLink V2 Lite 기반 모니터링 �
 
 ### Phase 2 (진행 중)
 - [ ] Serial port 자동 검색 및 연결
-- [ ] HEARTBEAT 메시지 송수신 (1Hz)
+- [ ] HEARTBEAT 메시지 송수신 (1000ms)
 - [ ] 연결 상태 모니터링 (3초 timeout)
 - [ ] 패킷 통계 표시 (RX/TX count, CRC errors)
 
 ### Phase 3 (예정)
-- [ ] CHARGER_STATUS 실시간 모니터링 (10Hz)
-- [ ] SENSOR_DATA 표시 (2Hz)
+- [ ] CHARGER_STATUS 실시간 모니터링 (500ms)
+- [ ] SENSOR_DATA 표시 (1000ms)
 - [ ] 실시간 그래프 (전압, 전류, 전력)
 
 ### Phase 4 (예정)
@@ -104,7 +104,7 @@ npm run test:heartbeat COM3           # Windows
 [CONNECT] Connecting...
 [OK] Connected to /dev/ttyUSB0 (115200 baud, 8N1)
 
-[START] Starting heartbeat (1Hz TX, monitoring RX)...
+[START] Starting heartbeat (1000ms TX, monitoring RX)...
 
 [TX] Heartbeat #0 (total sent: 1)
 [RX] Heartbeat from SYS:1 COMP:1 SEQ:0 STATE:ACTIVE TYPE:31 (total received: 1)

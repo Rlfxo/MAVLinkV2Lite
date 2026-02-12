@@ -24,7 +24,7 @@ Heartbeats: TX: 5  RX: 0
 // 보드 코드에서 하트비트 전송 확인
 void send_heartbeat(void) {
     // MAVLink HEARTBEAT 메시지 전송 코드
-    // 1Hz로 호출되고 있는지 확인
+    // 1000ms로 호출되고 있는지 확인
 }
 ```
 
@@ -110,7 +110,7 @@ crc = crc16_accumulate(crc, crc_extra);  // HEARTBEAT = 50
 1. **TX 핀 (PC12)**: 데이터가 나가는지
 2. **Baud rate**: 115200인지
 3. **프레임 포맷**: 0xFD로 시작하는지
-4. **프레임 간격**: 1Hz (1초마다)
+4. **프레임 간격**: 1000ms (1초마다)
 
 **예상 파형:**
 ```
@@ -164,7 +164,7 @@ Serial: TX: 105 bytes  RX: 0 bytes
 
 2. **보드 펌웨어 확인**
    - 하트비트 전송 코드 활성화 확인
-   - 1Hz로 호출되는지 확인
+   - 1000ms로 호출되는지 확인
 
 3. **배선 재확인**
    - TX ↔ RX 크로스오버 확인

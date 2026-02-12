@@ -51,21 +51,21 @@ export const MAVLINK_MIN_FRAME_LEN = 1 + MAVLINK_HEADER_LEN + MAVLINK_CHECKSUM_L
 
 /**
  * HEARTBEAT message (standard MAVLink)
- * Sent at 1Hz by both PC and DC Charger
+ * Sent at 1000ms by both PC and DC Charger
  * Used for connection monitoring and system status
  */
 export const MAVLINK_MSG_ID_HEARTBEAT = 0;
 
 /**
  * CHARGER_STATUS message (custom, 10001)
- * Sent by DC Charger at 10Hz
+ * Sent by DC Charger every 500ms
  * Contains real-time charging status
  */
 export const MAVLINK_MSG_ID_CHARGER_STATUS = 10001;
 
 /**
  * SENSOR_DATA message (custom, 10002)
- * Sent by DC Charger at 2Hz
+ * Sent by DC Charger every 1000ms
  * Contains sensor readings (temperature, etc.)
  */
 export const MAVLINK_MSG_ID_SENSOR_DATA = 10002;
@@ -83,6 +83,13 @@ export const MAVLINK_MSG_ID_CHARGER_COMMAND = 10100;
  * Controls relays and force discharge/recharge
  */
 export const MAVLINK_MSG_ID_MANUAL_CONTROL = 10101;
+
+/**
+ * COMMAND_ACK message (custom, 10102)
+ * Sent by DC Charger as acknowledgment to commands
+ * Contains target message ID and result code
+ */
+export const MAVLINK_MSG_ID_COMMAND_ACK = 10102;
 
 /**
  * CONFIG_REQUEST message (custom, 10200)
@@ -117,6 +124,7 @@ const CRC_EXTRA_MAP: Readonly<Record<number, number>> = {
   [MAVLINK_MSG_ID_CHARGER_STATUS]: 66,
   [MAVLINK_MSG_ID_SENSOR_DATA]: 120,
   [MAVLINK_MSG_ID_CHARGER_COMMAND]: 193,
+  [MAVLINK_MSG_ID_COMMAND_ACK]: 222,
   [MAVLINK_MSG_ID_MANUAL_CONTROL]: 239,
   [MAVLINK_MSG_ID_CONFIG_REQUEST]: 142,
   [MAVLINK_MSG_ID_CONFIG_RESPONSE]: 128,
@@ -184,7 +192,7 @@ export const MAVLINK_VERSION = 3;
 
 /**
  * Heartbeat transmission interval (milliseconds)
- * Standard MAVLink heartbeat rate: 1Hz
+ * Standard MAVLink heartbeat rate: 1000ms
  */
 export const HEARTBEAT_TX_INTERVAL_MS = 1000;
 
