@@ -368,6 +368,17 @@ body {
   color: var(--warning);
 }
 
+/* ---- Config Panel ---- */
+
+.config-panel .btn {
+  margin-bottom: 8px;
+  width: 100%;
+}
+
+.config-table td:first-child {
+  width: 90px;
+}
+
 /* ---- Message Log ---- */
 
 .log-split {

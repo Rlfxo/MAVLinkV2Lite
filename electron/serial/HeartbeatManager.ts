@@ -8,17 +8,18 @@
 import { EventEmitter } from 'events';
 import { SerialPortManager } from './SerialPortManager';
 import { MAVLinkParser } from '../protocol/parser';
-import { createPcHeartbeat, decodeHeartbeatPayload, decodeChargerStatusPayload, decodeSensorDataPayload, encodeChargerCommand, decodeCommandAckPayload } from '../protocol/encoder';
+import { createPcHeartbeat, decodeHeartbeatPayload, decodeChargerStatusPayload, decodeSensorDataPayload, encodeChargerCommand, decodeCommandAckPayload, encodeConfigRequest, decodeConfigResponsePayload } from '../protocol/encoder';
 import {
   MAVLINK_MSG_ID_HEARTBEAT,
   MAVLINK_MSG_ID_CHARGER_STATUS,
   MAVLINK_MSG_ID_SENSOR_DATA,
   MAVLINK_MSG_ID_COMMAND_ACK,
+  MAVLINK_MSG_ID_CONFIG_RESPONSE,
   HEARTBEAT_TX_INTERVAL_MS,
   HEARTBEAT_TIMEOUT_MS,
   HEARTBEAT_CHECK_INTERVAL_MS,
 } from '../protocol/constants';
-import type { HeartbeatPayload, ChargerStatusPayload, SensorDataPayload, ChargerCommandPayload, CommandAckPayload, MAVLinkMessage } from '../protocol/types';
+import type { HeartbeatPayload, ChargerStatusPayload, SensorDataPayload, ChargerCommandPayload, CommandAckPayload, ConfigResponsePayload, MAVLinkMessage } from '../protocol/types';
 
 /**
  * Heartbeat Manager Events
@@ -39,6 +40,8 @@ export interface HeartbeatManagerEvents {
   'sensor-data-received': (payload: SensorDataPayload, message: MAVLinkMessage) => void;
   'charger-command-sent': (payload: ChargerCommandPayload, seq: number) => void;
   'command-ack-received': (payload: CommandAckPayload, message: MAVLinkMessage) => void;
+  'config-request-sent': (seq: number) => void;
+  'config-response-received': (payload: ConfigResponsePayload, message: MAVLinkMessage) => void;
 }
 
 /**
@@ -334,6 +337,8 @@ export class HeartbeatManager extends EventEmitter {
           this.handleSensorData(message);
         } else if (message.msgid === MAVLINK_MSG_ID_COMMAND_ACK) {
           this.handleCommandAck(message);
+        } else if (message.msgid === MAVLINK_MSG_ID_CONFIG_RESPONSE) {
+          this.handleConfigResponse(message);
         }
       }
     });
@@ -406,6 +411,33 @@ export class HeartbeatManager extends EventEmitter {
     try {
       const payload = decodeCommandAckPayload(message.payload);
       this.emit('command-ack-received', payload, message);
+    } catch (error) {
+      // Ignore decode errors
+    }
+  }
+
+  /**
+   * Send CONFIG_REQUEST message (on-demand, 0B payload)
+   */
+  public sendConfigRequest(): void {
+    const frame = encodeConfigRequest({
+      sysid: this.sysid,
+      compid: this.compid,
+      seq: this.txSeq,
+    });
+    this.serialManager.write(frame);
+    const sentSeq = this.txSeq;
+    this.txSeq = (this.txSeq + 1) & 0xFF;
+    this.emit('config-request-sent', sentSeq);
+  }
+
+  /**
+   * Handle received CONFIG_RESPONSE message
+   */
+  private handleConfigResponse(message: MAVLinkMessage): void {
+    try {
+      const payload = decodeConfigResponsePayload(message.payload);
+      this.emit('config-response-received', payload, message);
     } catch (error) {
       // Ignore decode errors
     }

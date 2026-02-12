@@ -86,6 +86,19 @@ const electronAPI = {
       return () => ipcRenderer.removeListener('command-ack:received', handler);
     },
   },
+  config: {
+    sendRequest: () => ipcRenderer.invoke('config:send-request'),
+    onRequestSent: (callback: (data: unknown) => void) => {
+      const handler = (_event: Electron.IpcRendererEvent, data: unknown) => callback(data);
+      ipcRenderer.on('config-request:sent', handler);
+      return () => ipcRenderer.removeListener('config-request:sent', handler);
+    },
+    onResponseReceived: (callback: (data: unknown) => void) => {
+      const handler = (_event: Electron.IpcRendererEvent, data: unknown) => callback(data);
+      ipcRenderer.on('config-response:received', handler);
+      return () => ipcRenderer.removeListener('config-response:received', handler);
+    },
+  },
 };
 
 contextBridge.exposeInMainWorld('electron', electronAPI);

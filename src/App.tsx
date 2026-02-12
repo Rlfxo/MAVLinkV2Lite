@@ -11,15 +11,18 @@ import { MessageLog } from './components/MessageLog';
 import { ChargerStatusPanel } from './components/ChargerStatusPanel';
 import { SensorDataPanel } from './components/SensorDataPanel';
 import { ChargerCommandPanel } from './components/ChargerCommandPanel';
+import { ConfigPanel } from './components/ConfigPanel';
 import { useHeartbeat } from './hooks/useHeartbeat';
 import { useChargerData } from './hooks/useChargerData';
 import { useChargerCommand } from './hooks/useChargerCommand';
+import { useConfig } from './hooks/useConfig';
 import './App.css';
 
 export default function App() {
   useHeartbeat();
   useChargerData();
   useChargerCommand();
+  useConfig();
 
   return (
     <div className="app">
@@ -38,6 +41,7 @@ export default function App() {
           <ChargerStatusPanel />
           <SensorDataPanel />
           <ChargerCommandPanel />
+          <ConfigPanel />
         </div>
         <MessageLog />
       </main>

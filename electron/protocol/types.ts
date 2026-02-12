@@ -202,6 +202,25 @@ export interface CommandAckPayload {
 }
 
 // ============================================================================
+// CONFIG_RESPONSE Message (Message ID: 10201)
+// ============================================================================
+
+/**
+ * CONFIG_RESPONSE message payload
+ *
+ * Charger firmware/hardware information, sent by DC Charger in response to CONFIG_REQUEST.
+ * CONFIG_REQUEST (10200) has 0-byte payload — no dedicated type needed.
+ *
+ * Payload size: 36 bytes
+ */
+export interface ConfigResponsePayload {
+  fwVersion: number;    // uint32_t LE — 0x00XXYYZZ → XX.YY.ZZ
+  hwVersion: number;    // uint32_t LE
+  modelName: string;    // char[16] null-terminated UTF-8
+  buildDate: string;    // char[12] YYYYMMDDHHMM
+}
+
+// ============================================================================
 // MANUAL_CONTROL Message (Message ID: 10101)
 // ============================================================================
 

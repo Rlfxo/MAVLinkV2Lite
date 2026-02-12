@@ -7,7 +7,7 @@
 
 import { ipcMain, BrowserWindow } from 'electron';
 import { HeartbeatManager } from '../serial/HeartbeatManager';
-import type { HeartbeatPayload, ChargerStatusPayload, SensorDataPayload, ChargerCommandPayload, CommandAckPayload, MAVLinkMessage } from '../protocol/types';
+import type { HeartbeatPayload, ChargerStatusPayload, SensorDataPayload, ChargerCommandPayload, CommandAckPayload, ConfigResponsePayload, MAVLinkMessage } from '../protocol/types';
 
 /**
  * Register heartbeat-related IPC handlers
@@ -121,6 +121,33 @@ export function registerHeartbeatHandlers(
     const win = getWindow();
     if (win && !win.isDestroyed()) {
       win.webContents.send('command-ack:received', {
+        payload,
+        seq: message.seq,
+        sysid: message.sysid,
+        compid: message.compid,
+        timestamp: Date.now(),
+      });
+    }
+  });
+
+  // Handle CONFIG_REQUEST send request from renderer
+  ipcMain.handle('config:send-request', () => {
+    heartbeatManager.sendConfigRequest();
+  });
+
+  // Forward CONFIG_REQUEST sent event to renderer
+  heartbeatManager.on('config-request-sent', (seq: number) => {
+    const win = getWindow();
+    if (win && !win.isDestroyed()) {
+      win.webContents.send('config-request:sent', { seq, timestamp: Date.now() });
+    }
+  });
+
+  // Forward CONFIG_RESPONSE received event to renderer
+  heartbeatManager.on('config-response-received', (payload: ConfigResponsePayload, message: MAVLinkMessage) => {
+    const win = getWindow();
+    if (win && !win.isDestroyed()) {
+      win.webContents.send('config-response:received', {
         payload,
         seq: message.seq,
         sysid: message.sysid,
