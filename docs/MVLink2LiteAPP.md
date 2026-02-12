@@ -126,7 +126,7 @@ uint32_t fw_version;     // FW 버전 (0x00XXYYZZ)
 uint32_t hw_version;     // HW 버전
 uint32_t serial_number;  // 시리얼 번호
 uint8_t  model_name[16]; // 모델명 (null-terminated)
-uint8_t  build_date[12]; // 빌드 날짜 (YYYYMMDDHHSS)
+uint8_t  build_date[12]; // 빌드 날짜 (YYYYMMDDHHMM)
 uint8_t  reserved[4];
 ```
 

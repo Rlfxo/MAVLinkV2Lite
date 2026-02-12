@@ -454,7 +454,7 @@ Offset  Size    Type         Field             Description
 0       4       uint32_t     fw_version        FW 버전 (0x00XXYYZZ)
 4       4       uint32_t     hw_version        HW 버전
 8       16      char[16]     model_name        모델명 (null-terminated)
-24      12      char[12]     build_date        빌드 날짜 (YYYYMMDDHHSS)
+24      12      char[12]     build_date        빌드 날짜 (YYYYMMDDHHMM)
 ──────────────────────────────────────────────────────────────────
 Total: 36 bytes
 ```
