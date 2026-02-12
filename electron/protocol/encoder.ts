@@ -111,7 +111,7 @@ function encodeHeartbeatPayload(params: HeartbeatPayload): Uint8Array {
  * Encode HEARTBEAT message
  *
  * Creates a complete HEARTBEAT message frame.
- * HEARTBEAT is sent at 1Hz to indicate system presence and status.
+ * HEARTBEAT is sent every 1000ms to indicate system presence and status.
  *
  * @param params - HEARTBEAT message parameters
  * @returns Complete MAVLink HEARTBEAT frame

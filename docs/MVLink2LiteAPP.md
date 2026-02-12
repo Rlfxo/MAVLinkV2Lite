@@ -50,7 +50,7 @@ DC Charger와 PC 간 통신을 위한 MAVLink V2 Lite 기반 모니터링 및 �
 
 ### 4.1 수신 기능 (DC Charger → PC)
 
-#### 4.1.1 HEARTBEAT (MSG_ID: 0) - 1Hz
+#### 4.1.1 HEARTBEAT (MSG_ID: 0) - 1000ms
 **목적**: 연결 상태 확인, Keep-alive
 
 **Payload (9 bytes)**:
@@ -68,7 +68,7 @@ uint8_t  mavlink_version; // 3 (MAVLink V2)
 - Last seen timestamp 표시
 - Packet loss rate 계산
 
-#### 4.1.2 CHARGER_STATUS (MSG_ID: 10001) - 10Hz (예정)
+#### 4.1.2 CHARGER_STATUS (MSG_ID: 10001) - 500ms (예정)
 **목적**: 충전기 실시간 상태 모니터링
 
 **Payload (32 bytes)**:
@@ -93,7 +93,7 @@ uint8_t  reserved;
 - 에러 코드 해석 및 표시
 - 충전 상태 표시 (색상 코딩)
 
-#### 4.1.3 SENSOR_DATA (MSG_ID: 10002) - 2Hz (예정)
+#### 4.1.3 SENSOR_DATA (MSG_ID: 10002) - 1000ms (예정)
 **목적**: 센서 데이터 모니터링
 
 **Payload (40 bytes)**:
@@ -138,7 +138,7 @@ uint8_t  reserved[4];
 
 ### 4.2 송신 기능 (PC → DC Charger)
 
-#### 4.2.1 HEARTBEAT (MSG_ID: 0) - 1Hz
+#### 4.2.1 HEARTBEAT (MSG_ID: 0) - 1000ms
 **목적**: PC 연결 상태 알림
 
 **Payload (9 bytes)**:
@@ -152,7 +152,7 @@ uint8_t  mavlink_version; // 3
 ```
 
 **필수 기능**:
-- 자동 1Hz 전송 (연결 유지)
+- 자동 1000ms 전송 (연결 유지)
 
 #### 4.2.2 CHARGER_COMMAND (MSG_ID: 10100)
 **목적**: 충전기 제어 명령
@@ -306,13 +306,13 @@ mavlink_app/
 ## 8. Testing Requirements
 
 ### 8.1 기본 테스트
-- [ ] Heartbeat 수신 확인 (1Hz)
+- [ ] Heartbeat 수신 확인 (1000ms)
 - [ ] 연결 타임아웃 테스트 (3초)
 - [ ] CRC 에러 감지
 - [ ] 명령 송신 확인
 
 ### 8.2 통신 테스트
-- [ ] 고속 수신 테스트 (10Hz CHARGER_STATUS)
+- [ ] 고속 수신 테스트 (500ms CHARGER_STATUS)
 - [ ] Long-running stability (24시간 연속 수신)
 - [ ] Packet loss 측정
 
@@ -373,9 +373,9 @@ mavlink_app/
 
 | Message ID | Name              | Direction      | Rate   | Status      |
 |------------|-------------------|----------------|--------|-------------|
-| 0          | HEARTBEAT         | Bidirectional  | 1Hz    | Implemented |
-| 10001      | CHARGER_STATUS    | Board → PC     | 10Hz   | Planned     |
-| 10002      | SENSOR_DATA       | Board → PC     | 2Hz    | Planned     |
+| 0          | HEARTBEAT         | Bidirectional  | 1000ms    | Implemented |
+| 10001      | CHARGER_STATUS    | Board → PC     | 500ms   | Planned     |
+| 10002      | SENSOR_DATA       | Board → PC     | 1000ms   | Planned     |
 | 10003      | RELAY_STATUS      | Board → PC     | On req | Planned     |
 | 10004      | ERROR_STATUS      | Board → PC     | On evt | Planned     |
 | 10100      | CHARGER_COMMAND   | PC → Board     | On cmd | Planned     |

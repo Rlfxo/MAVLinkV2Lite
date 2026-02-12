@@ -59,7 +59,7 @@ export interface HeartbeatStatus {
  * HeartbeatManager
  *
  * Manages bidirectional HEARTBEAT communication:
- * - Sends HEARTBEAT at 1Hz (configurable)
+ * - Sends HEARTBEAT every 1000ms (configurable)
  * - Receives and parses HEARTBEAT from remote system
  * - Monitors connection status with timeout detection
  *
@@ -134,7 +134,7 @@ export class HeartbeatManager extends EventEmitter {
       throw new Error('HeartbeatManager already started');
     }
 
-    // Start TX scheduler (1Hz)
+    // Start TX scheduler (1000ms)
     this.txInterval = setInterval(() => {
       this.sendHeartbeat();
     }, this.txIntervalMs);

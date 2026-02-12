@@ -31,7 +31,7 @@ export function StatusDisplay() {
         <tbody>
           <tr>
             <td>Sending</td>
-            <td>{hb?.isSending ? 'YES (1Hz)' : 'NO'}</td>
+            <td>{hb?.isSending ? 'YES (1000ms)' : 'NO'}</td>
           </tr>
           <tr>
             <td>Connected</td>

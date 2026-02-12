@@ -145,7 +145,7 @@ async function main() {
     });
 
     // Start heartbeat
-    log('\n[START] Starting heartbeat (1Hz TX, monitoring RX)...\n', colors.bright + colors.blue);
+    log('\n[START] Starting heartbeat (1000ms TX, monitoring RX)...\n', colors.bright + colors.blue);
     heartbeatManager.start();
 
     // Status display interval

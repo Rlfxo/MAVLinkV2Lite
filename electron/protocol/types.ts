@@ -83,7 +83,7 @@ export interface MAVLinkHeader {
  * HEARTBEAT message payload
  *
  * Simplified HEARTBEAT for DC Charger protocol.
- * Sent at 1Hz by both PC and DC Charger for keep-alive.
+ * Sent at 1000ms by both PC and DC Charger for keep-alive.
  *
  * Payload size: 2 bytes
  */
@@ -102,7 +102,7 @@ export interface HeartbeatPayload {
 /**
  * CHARGER_STATUS message payload
  *
- * Charger operational status, sent by DC Charger at 10Hz.
+ * Charger operational status, sent by DC Charger every 500ms.
  * Contains discharging/recharging state, BMS info, relay, and diagnostics.
  *
  * Payload size: 16 bytes (Phase 3)
@@ -126,7 +126,7 @@ export interface ChargerStatusPayload {
 /**
  * SENSOR_DATA message payload
  *
- * Sensor readings, sent by DC Charger at 2Hz.
+ * Sensor readings, sent by DC Charger every 1000ms.
  * Contains environment, IMU, DCGF, power meter, and IMD data.
  *
  * Payload size: 52 bytes (Phase 3)

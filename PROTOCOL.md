@@ -154,12 +154,12 @@ Result:  CRC = 0x6A19 → CRC_L=0x19, CRC_H=0x6A
 
 ### 4.1 HEARTBEAT (MSG_ID: 0)
 
-연결 상태 확인 및 Keep-alive. 양방향 1Hz 전송.
+연결 상태 확인 및 Keep-alive. 양방향 1000ms 전송.
 응답 없이 각자 독립적으로 전송하며, 상대방의 생존 여부만 판단한다.
 
 | Direction | Rate | Payload Size |
 |-----------|------|-------------|
-| Bidirectional | 1 Hz | 2 bytes |
+| Bidirectional | 1000 ms | 2 bytes |
 
 #### Payload Structure
 
@@ -206,13 +206,13 @@ mavlink_version = 3
 
 ### 4.2 CHARGER_STATUS (MSG_ID: 10001) - Phase 3
 
-충전기 운영 상태. DC Charger → PC, 10Hz.
+충전기 운영 상태. DC Charger → PC, 500ms.
 방전(SECC)/재충전(EVCC) 상태, BMS 정보, 릴레이, 진단 정보를 포함한다.
 실시간 전기 측정값(voltage, current)은 SENSOR_DATA(10002)에서 전송한다.
 
 | Direction | Rate | Payload Size |
 |-----------|------|-------------|
-| Board → PC | 10 Hz | 16 bytes |
+| Board → PC | 500 ms | 16 bytes |
 
 #### Payload Structure
 
@@ -267,12 +267,12 @@ Total: 16 bytes
 
 ### 4.3 SENSOR_DATA (MSG_ID: 10002) - Phase 3
 
-센서 데이터. DC Charger → PC, 2Hz.
+센서 데이터. DC Charger → PC, 1000ms.
 환경 센서(온습도), IMU(가속도/자이로), DCGF, 전력량계, IMD 데이터를 포함한다.
 
 | Direction | Rate | Payload Size |
 |-----------|------|-------------|
-| Board → PC | 2 Hz | 52 bytes |
+| Board → PC | 1000 ms | 52 bytes |
 
 #### Payload Structure
 
@@ -484,9 +484,9 @@ Example: `0x00010203` → v1.2.3
 
 | MSG ID | Name | Direction | Rate | Payload | CRC Extra | Status |
 |--------|------|-----------|------|---------|-----------|--------|
-| 0 | HEARTBEAT | Bidirectional | 1 Hz | 2 B | 142 | Implemented |
-| 10001 | CHARGER_STATUS | Board → PC | 10 Hz | 16 B | 66 | Implemented |
-| 10002 | SENSOR_DATA | Board → PC | 2 Hz | 52 B | 120 | Implemented |
+| 0 | HEARTBEAT | Bidirectional | 1000 ms | 2 B | 142 | Implemented |
+| 10001 | CHARGER_STATUS | Board → PC | 500 ms | 16 B | 66 | Implemented |
+| 10002 | SENSOR_DATA | Board → PC | 1000 ms | 52 B | 120 | Implemented |
 | 10100 | CHARGER_COMMAND | PC → Board | On cmd | 3 B | 193 | Implemented |
 | 10102 | COMMAND_ACK | Board → PC | On ACK | 3 B | 222 | Implemented |
 | 10101 | MANUAL_CONTROL | PC → Board | On cmd | 6 B | 239 | Defined |
@@ -502,9 +502,9 @@ Example: `0x00010203` → v1.2.3
 ```
 PC (SYSID=255)                           DC Charger (SYSID=1)
      |                                          |
-     |------- HEARTBEAT (1Hz) ----------------->|
+     |------- HEARTBEAT (1000ms) ----------------->|
      |                                          |
-     |<------- HEARTBEAT (1Hz) -----------------|
+     |<------- HEARTBEAT (1000ms) -----------------|
      |                                          |
      |  (Both sides receive HEARTBEAT)          |
      |  => Connection ESTABLISHED               |
@@ -516,11 +516,11 @@ PC (SYSID=255)                           DC Charger (SYSID=1)
 ```
 PC                                       DC Charger
      |                                          |
-     |<------ HEARTBEAT (1Hz) -----------------|
-     |<------ CHARGER_STATUS (10Hz) ------------|
-     |<------ SENSOR_DATA (2Hz) ----------------|
+     |<------ HEARTBEAT (1000ms) -----------------|
+     |<------ CHARGER_STATUS (500ms) ------------|
+     |<------ SENSOR_DATA (1000ms) ----------------|
      |                                          |
-     |------- HEARTBEAT (1Hz) ----------------->|
+     |------- HEARTBEAT (1000ms) ----------------->|
      |------- CHARGER_COMMAND (on demand) ----->|
      |<------ COMMAND_ACK (response) ----------|
      |------- MANUAL_CONTROL (on demand) ----->|
