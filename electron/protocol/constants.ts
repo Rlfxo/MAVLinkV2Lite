@@ -104,6 +104,34 @@ export const MAVLINK_MSG_ID_CONFIG_REQUEST = 10200;
 export const MAVLINK_MSG_ID_CONFIG_RESPONSE = 10201;
 
 // ============================================================================
+// EVCC (PLC Modem) Message IDs (20xxx range)
+// ============================================================================
+
+/** EVCC Status - overall EVCC state (2Hz) */
+export const MAVLINK_MSG_ID_EVCC_STATUS = 20001;
+
+/** EVCC AC Charging parameters (2Hz, during AC charging) */
+export const MAVLINK_MSG_ID_EVCC_CHARGING_AC = 20002;
+
+/** EVCC DC Charging parameters (2Hz, during DC charging) */
+export const MAVLINK_MSG_ID_EVCC_CHARGING_DC = 20003;
+
+/** EVCC Command (PC→Board, on-demand) */
+export const MAVLINK_MSG_ID_EVCC_COMMAND = 20100;
+
+/** EVCC EV Parameters (PC→Board, on-demand) */
+export const MAVLINK_MSG_ID_EVCC_EV_PARAMS = 20101;
+
+/** EVCC Command ACK (Board→PC, response) */
+export const MAVLINK_MSG_ID_EVCC_COMMAND_ACK = 20102;
+
+/** EVCC Config Request (PC→Board, on-demand) */
+export const MAVLINK_MSG_ID_EVCC_CONFIG_REQUEST = 20200;
+
+/** EVCC Config Response (Board→PC, response) */
+export const MAVLINK_MSG_ID_EVCC_CONFIG_RESPONSE = 20201;
+
+// ============================================================================
 // CRC Extra Values (Message Signatures)
 // ============================================================================
 
@@ -128,6 +156,15 @@ const CRC_EXTRA_MAP: Readonly<Record<number, number>> = {
   [MAVLINK_MSG_ID_MANUAL_CONTROL]: 239,
   [MAVLINK_MSG_ID_CONFIG_REQUEST]: 142,
   [MAVLINK_MSG_ID_CONFIG_RESPONSE]: 128,
+  // EVCC (PLC Modem) messages
+  [MAVLINK_MSG_ID_EVCC_STATUS]: 171,
+  [MAVLINK_MSG_ID_EVCC_CHARGING_AC]: 92,
+  [MAVLINK_MSG_ID_EVCC_CHARGING_DC]: 203,
+  [MAVLINK_MSG_ID_EVCC_COMMAND]: 117,
+  [MAVLINK_MSG_ID_EVCC_EV_PARAMS]: 134,
+  [MAVLINK_MSG_ID_EVCC_COMMAND_ACK]: 78,
+  [MAVLINK_MSG_ID_EVCC_CONFIG_REQUEST]: 55,
+  [MAVLINK_MSG_ID_EVCC_CONFIG_RESPONSE]: 162,
 };
 
 /**
@@ -153,6 +190,11 @@ export function getCrcExtra(msgid: number): number {
  * System ID for DC Charger
  */
 export const SYSID_CHARGER = 1;
+
+/**
+ * System ID for EVCC (PLC Modem)
+ */
+export const SYSID_EVCC = 2;
 
 /**
  * System ID for PC (Ground Control Station)

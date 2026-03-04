@@ -15,11 +15,25 @@ import {
   MAVLINK_MSG_ID_COMMAND_ACK,
   MAVLINK_MSG_ID_CONFIG_REQUEST,
   MAVLINK_MSG_ID_CONFIG_RESPONSE,
+  MAVLINK_MSG_ID_EVCC_STATUS,
+  MAVLINK_MSG_ID_EVCC_CHARGING_AC,
+  MAVLINK_MSG_ID_EVCC_CHARGING_DC,
+  MAVLINK_MSG_ID_EVCC_COMMAND,
+  MAVLINK_MSG_ID_EVCC_EV_PARAMS,
+  MAVLINK_MSG_ID_EVCC_COMMAND_ACK,
+  MAVLINK_MSG_ID_EVCC_CONFIG_REQUEST,
+  MAVLINK_MSG_ID_EVCC_CONFIG_RESPONSE,
   getCrcExtra,
   MAV_STATE,
   MAVLINK_VERSION
 } from './constants';
-import { HeartbeatPayload, ChargerStatusPayload, SensorDataPayload, ChargerCommandPayload, CommandAckPayload, ConfigResponsePayload } from './types';
+import {
+  HeartbeatPayload, ChargerStatusPayload, SensorDataPayload,
+  ChargerCommandPayload, CommandAckPayload, ConfigResponsePayload,
+  EvccStatusPayload, EvccChargingAcPayload, EvccChargingDcPayload,
+  EvccCommandPayload, EvccEvParamsPayload, EvccCommandAckPayload,
+  EvccConfigResponsePayload
+} from './types';
 
 /**
  * Encode a generic MAVLink V2 message
@@ -631,4 +645,170 @@ export function encodeConfigResponse(params: {
     MAVLINK_MSG_ID_CONFIG_RESPONSE,
     payload
   );
+}
+
+// ============================================================================
+// EVCC (PLC Modem) Messages
+// ============================================================================
+
+// ---- EVCC_STATUS (20001, 16 bytes) ----
+
+export function decodeEvccStatusPayload(payload: Uint8Array): EvccStatusPayload {
+  if (payload.length < 16) {
+    throw new Error(`Invalid EVCC_STATUS payload length: ${payload.length} (expected 16)`);
+  }
+  const dv = new DataView(payload.buffer, payload.byteOffset, payload.byteLength);
+  return {
+    evccStep: payload[0],
+    evccState: payload[1],
+    chargeMode: payload[2],
+    cpState: payload[3],
+    cpDuty: payload[4],
+    cpPwmValid: payload[5],
+    cpVoltageMv: dv.getUint16(6, true),
+    slacState: payload[8],
+    slacResult: payload[9],
+    slacRetryCnt: payload[10],
+    sdpState: payload[11],
+    v2gState: payload[12],
+    v2gProtocol: payload[13],
+    sessionResumable: payload[14],
+    reserved: payload[15],
+  };
+}
+
+// ---- EVCC_CHARGING_AC (20002, 14 bytes) ----
+
+export function decodeEvccChargingAcPayload(payload: Uint8Array): EvccChargingAcPayload {
+  if (payload.length < 14) {
+    throw new Error(`Invalid EVCC_CHARGING_AC payload length: ${payload.length} (expected 14)`);
+  }
+  const dv = new DataView(payload.buffer, payload.byteOffset, payload.byteLength);
+  return {
+    evseMaxCurrentA: dv.getInt16(0, true),
+    evseNominalVoltageV: dv.getInt16(2, true),
+    evseMaxPowerW: dv.getInt32(4, true),
+    evMaxCurrentA: dv.getInt16(8, true),
+    evMaxVoltageV: dv.getInt16(10, true),
+    chargingComplete: payload[12],
+    reserved: payload[13],
+  };
+}
+
+// ---- EVCC_CHARGING_DC (20003, 28 bytes) ----
+
+export function decodeEvccChargingDcPayload(payload: Uint8Array): EvccChargingDcPayload {
+  if (payload.length < 28) {
+    throw new Error(`Invalid EVCC_CHARGING_DC payload length: ${payload.length} (expected 28)`);
+  }
+  const dv = new DataView(payload.buffer, payload.byteOffset, payload.byteLength);
+  return {
+    evSoc: payload[0],
+    evReady: payload[1],
+    evTargetVoltageV: dv.getInt16(2, true),
+    evTargetCurrentA: dv.getInt16(4, true),
+    evsePresentVoltageV: dv.getInt16(6, true),
+    evsePresentCurrentA: dv.getInt16(8, true),
+    evseMaxVoltageV: dv.getInt16(10, true),
+    evseMaxCurrentA: dv.getInt16(12, true),
+    evseMaxPowerW: dv.getInt32(14, true),
+    evEnergyCapacityWh: dv.getInt32(18, true),
+    chargingComplete: payload[22],
+    evseIsolationStatus: payload[23],
+    evseStatusCode: payload[24],
+    reserved: payload[25],
+  };
+}
+
+// ---- EVCC_COMMAND (20100, 2 bytes) ----
+
+function encodeEvccCommandPayload(params: EvccCommandPayload): Uint8Array {
+  const payload = new Uint8Array(2);
+  payload[0] = params.command & 0xFF;
+  payload[1] = params.param & 0xFF;
+  return payload;
+}
+
+export function encodeEvccCommand(params: {
+  sysid: number;
+  compid: number;
+  seq: number;
+} & EvccCommandPayload): Uint8Array {
+  const payload = encodeEvccCommandPayload({
+    command: params.command,
+    param: params.param,
+  });
+  return encodeMavlink(params.sysid, params.compid, params.seq, MAVLINK_MSG_ID_EVCC_COMMAND, payload);
+}
+
+export function decodeEvccCommandPayload(payload: Uint8Array): EvccCommandPayload {
+  if (payload.length < 2) {
+    throw new Error(`Invalid EVCC_COMMAND payload length: ${payload.length} (expected 2)`);
+  }
+  return { command: payload[0], param: payload[1] };
+}
+
+// ---- EVCC_EV_PARAMS (20101, 16 bytes) ----
+
+function encodeEvccEvParamsPayload(params: EvccEvParamsPayload): Uint8Array {
+  const payload = new Uint8Array(16);
+  const dv = new DataView(payload.buffer, payload.byteOffset, payload.byteLength);
+  payload[0] = params.evReady & 0xFF;
+  payload[1] = params.evSoc & 0xFF;
+  dv.setInt16(2, params.evMaxVoltageV, true);
+  dv.setInt16(4, params.evMaxCurrentA, true);
+  dv.setInt32(6, params.evMaxPowerW, true);
+  dv.setInt16(10, params.evTargetVoltageV, true);
+  dv.setInt16(12, params.evTargetCurrentA, true);
+  return payload;
+}
+
+export function encodeEvccEvParams(params: {
+  sysid: number;
+  compid: number;
+  seq: number;
+} & EvccEvParamsPayload): Uint8Array {
+  const payload = encodeEvccEvParamsPayload(params);
+  return encodeMavlink(params.sysid, params.compid, params.seq, MAVLINK_MSG_ID_EVCC_EV_PARAMS, payload);
+}
+
+// ---- EVCC COMMAND_ACK (20102, 3 bytes) ----
+
+export function decodeEvccCommandAckPayload(payload: Uint8Array): EvccCommandAckPayload {
+  if (payload.length < 3) {
+    throw new Error(`Invalid EVCC_COMMAND_ACK payload length: ${payload.length} (expected 3)`);
+  }
+  return { command: payload[0], result: payload[1], reserved: payload[2] };
+}
+
+// ---- EVCC CONFIG_REQUEST (20200, 0 bytes) ----
+
+export function encodeEvccConfigRequest(params: {
+  sysid: number;
+  compid: number;
+  seq: number;
+}): Uint8Array {
+  return encodeMavlink(params.sysid, params.compid, params.seq, MAVLINK_MSG_ID_EVCC_CONFIG_REQUEST, new Uint8Array(0));
+}
+
+// ---- EVCC CONFIG_RESPONSE (20201, 36 bytes) ----
+
+export function decodeEvccConfigResponsePayload(payload: Uint8Array): EvccConfigResponsePayload {
+  if (payload.length < 38) {
+    throw new Error(`Invalid EVCC_CONFIG_RESPONSE payload length: ${payload.length} (expected 38)`);
+  }
+  const dv = new DataView(payload.buffer, payload.byteOffset, payload.byteLength);
+  return {
+    fwVersionMajor: payload[0],
+    fwVersionMinor: payload[1],
+    fwVersionPatch: payload[2],
+    chargeMode: payload[3],
+    fwBuildYear: dv.getUint16(4, true),
+    fwBuildMonth: payload[6],
+    fwBuildDay: payload[7],
+    macAddress: payload.slice(8, 14),
+    evseMac: payload.slice(14, 20),
+    seccIp: payload.slice(20, 36),
+    seccPort: dv.getUint16(36, true),
+  };
 }
