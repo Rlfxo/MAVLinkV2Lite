@@ -99,6 +99,60 @@ const electronAPI = {
       return () => ipcRenderer.removeListener('config-response:received', handler);
     },
   },
+  // ==== EVCC APIs ====
+  evccStatus: {
+    onReceived: (callback: (data: unknown) => void) => {
+      const handler = (_event: Electron.IpcRendererEvent, data: unknown) => callback(data);
+      ipcRenderer.on('evcc-status:received', handler);
+      return () => ipcRenderer.removeListener('evcc-status:received', handler);
+    },
+  },
+  evccChargingAc: {
+    onReceived: (callback: (data: unknown) => void) => {
+      const handler = (_event: Electron.IpcRendererEvent, data: unknown) => callback(data);
+      ipcRenderer.on('evcc-charging-ac:received', handler);
+      return () => ipcRenderer.removeListener('evcc-charging-ac:received', handler);
+    },
+  },
+  evccChargingDc: {
+    onReceived: (callback: (data: unknown) => void) => {
+      const handler = (_event: Electron.IpcRendererEvent, data: unknown) => callback(data);
+      ipcRenderer.on('evcc-charging-dc:received', handler);
+      return () => ipcRenderer.removeListener('evcc-charging-dc:received', handler);
+    },
+  },
+  evccCommand: {
+    send: (payload: { command: number; param: number }) =>
+      ipcRenderer.invoke('evcc:send-command', payload),
+    onSent: (callback: (data: unknown) => void) => {
+      const handler = (_event: Electron.IpcRendererEvent, data: unknown) => callback(data);
+      ipcRenderer.on('evcc-command:sent', handler);
+      return () => ipcRenderer.removeListener('evcc-command:sent', handler);
+    },
+  },
+  evccEvParams: {
+    send: (payload: unknown) => ipcRenderer.invoke('evcc:send-ev-params', payload),
+  },
+  evccCommandAck: {
+    onReceived: (callback: (data: unknown) => void) => {
+      const handler = (_event: Electron.IpcRendererEvent, data: unknown) => callback(data);
+      ipcRenderer.on('evcc-command-ack:received', handler);
+      return () => ipcRenderer.removeListener('evcc-command-ack:received', handler);
+    },
+  },
+  evccConfig: {
+    sendRequest: () => ipcRenderer.invoke('evcc:send-config-request'),
+    onRequestSent: (callback: (data: unknown) => void) => {
+      const handler = (_event: Electron.IpcRendererEvent, data: unknown) => callback(data);
+      ipcRenderer.on('evcc-config-request:sent', handler);
+      return () => ipcRenderer.removeListener('evcc-config-request:sent', handler);
+    },
+    onResponseReceived: (callback: (data: unknown) => void) => {
+      const handler = (_event: Electron.IpcRendererEvent, data: unknown) => callback(data);
+      ipcRenderer.on('evcc-config-response:received', handler);
+      return () => ipcRenderer.removeListener('evcc-config-response:received', handler);
+    },
+  },
 };
 
 contextBridge.exposeInMainWorld('electron', electronAPI);

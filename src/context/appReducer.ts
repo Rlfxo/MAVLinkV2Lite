@@ -14,6 +14,11 @@ import type {
   SensorDataPayload,
   CommandAckPayload,
   ConfigResponsePayload,
+  EvccStatusPayload,
+  EvccChargingAcPayload,
+  EvccChargingDcPayload,
+  EvccCommandAckPayload,
+  EvccConfigResponsePayload,
 } from '../../electron/protocol/types';
 import type { SerialStatus } from '../../electron/serial/SerialPortManager';
 
@@ -46,6 +51,21 @@ export interface AppState {
   isSendingCommand: boolean;
   lastConfigResponse: ConfigResponsePayload | null;
   lastConfigResponseTime: number | null;
+  // Tab & device detection
+  activeTab: 'charger' | 'evcc';
+  detectedDevice: 'none' | 'charger' | 'evcc' | 'both';
+  // EVCC state
+  lastEvccStatus: EvccStatusPayload | null;
+  lastEvccStatusTime: number | null;
+  lastEvccChargingAc: EvccChargingAcPayload | null;
+  lastEvccChargingAcTime: number | null;
+  lastEvccChargingDc: EvccChargingDcPayload | null;
+  lastEvccChargingDcTime: number | null;
+  lastEvccCommandAck: EvccCommandAckPayload | null;
+  lastEvccCommandAckTime: number | null;
+  lastEvccConfigResponse: EvccConfigResponsePayload | null;
+  lastEvccConfigResponseTime: number | null;
+  isSendingEvccCommand: boolean;
 }
 
 export type AppAction =
@@ -63,6 +83,14 @@ export type AppAction =
   | { type: 'SET_COMMAND_ACK'; payload: CommandAckPayload }
   | { type: 'SET_SENDING_COMMAND'; payload: boolean }
   | { type: 'SET_CONFIG_RESPONSE'; payload: ConfigResponsePayload }
+  | { type: 'SET_ACTIVE_TAB'; payload: 'charger' | 'evcc' }
+  | { type: 'SET_DETECTED_DEVICE'; payload: 'none' | 'charger' | 'evcc' | 'both' }
+  | { type: 'SET_EVCC_STATUS'; payload: EvccStatusPayload }
+  | { type: 'SET_EVCC_CHARGING_AC'; payload: EvccChargingAcPayload }
+  | { type: 'SET_EVCC_CHARGING_DC'; payload: EvccChargingDcPayload }
+  | { type: 'SET_EVCC_COMMAND_ACK'; payload: EvccCommandAckPayload }
+  | { type: 'SET_EVCC_CONFIG_RESPONSE'; payload: EvccConfigResponsePayload }
+  | { type: 'SET_SENDING_EVCC_COMMAND'; payload: boolean }
   | { type: 'CLEAR_LOG' }
   | { type: 'RESET' };
 
@@ -87,6 +115,19 @@ export const initialState: AppState = {
   isSendingCommand: false,
   lastConfigResponse: null,
   lastConfigResponseTime: null,
+  activeTab: 'charger',
+  detectedDevice: 'none',
+  lastEvccStatus: null,
+  lastEvccStatusTime: null,
+  lastEvccChargingAc: null,
+  lastEvccChargingAcTime: null,
+  lastEvccChargingDc: null,
+  lastEvccChargingDcTime: null,
+  lastEvccCommandAck: null,
+  lastEvccCommandAckTime: null,
+  lastEvccConfigResponse: null,
+  lastEvccConfigResponseTime: null,
+  isSendingEvccCommand: false,
 };
 
 export function appReducer(state: AppState, action: AppAction): AppState {
@@ -137,6 +178,30 @@ export function appReducer(state: AppState, action: AppAction): AppState {
 
     case 'SET_CONFIG_RESPONSE':
       return { ...state, lastConfigResponse: action.payload, lastConfigResponseTime: Date.now() };
+
+    case 'SET_ACTIVE_TAB':
+      return { ...state, activeTab: action.payload };
+
+    case 'SET_DETECTED_DEVICE':
+      return { ...state, detectedDevice: action.payload };
+
+    case 'SET_EVCC_STATUS':
+      return { ...state, lastEvccStatus: action.payload, lastEvccStatusTime: Date.now() };
+
+    case 'SET_EVCC_CHARGING_AC':
+      return { ...state, lastEvccChargingAc: action.payload, lastEvccChargingAcTime: Date.now() };
+
+    case 'SET_EVCC_CHARGING_DC':
+      return { ...state, lastEvccChargingDc: action.payload, lastEvccChargingDcTime: Date.now() };
+
+    case 'SET_EVCC_COMMAND_ACK':
+      return { ...state, lastEvccCommandAck: action.payload, lastEvccCommandAckTime: Date.now(), isSendingEvccCommand: false };
+
+    case 'SET_EVCC_CONFIG_RESPONSE':
+      return { ...state, lastEvccConfigResponse: action.payload, lastEvccConfigResponseTime: Date.now() };
+
+    case 'SET_SENDING_EVCC_COMMAND':
+      return { ...state, isSendingEvccCommand: action.payload };
 
     case 'CLEAR_LOG':
       return { ...state, messageLog: [] };

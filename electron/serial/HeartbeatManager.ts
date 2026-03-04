@@ -8,18 +8,34 @@
 import { EventEmitter } from 'events';
 import { SerialPortManager } from './SerialPortManager';
 import { MAVLinkParser } from '../protocol/parser';
-import { createPcHeartbeat, decodeHeartbeatPayload, decodeChargerStatusPayload, decodeSensorDataPayload, encodeChargerCommand, decodeCommandAckPayload, encodeConfigRequest, decodeConfigResponsePayload } from '../protocol/encoder';
+import {
+  createPcHeartbeat, decodeHeartbeatPayload, decodeChargerStatusPayload, decodeSensorDataPayload,
+  encodeChargerCommand, decodeCommandAckPayload, encodeConfigRequest, decodeConfigResponsePayload,
+  decodeEvccStatusPayload, decodeEvccChargingAcPayload, decodeEvccChargingDcPayload,
+  decodeEvccCommandAckPayload, decodeEvccConfigResponsePayload,
+  encodeEvccCommand, encodeEvccEvParams, encodeEvccConfigRequest,
+} from '../protocol/encoder';
 import {
   MAVLINK_MSG_ID_HEARTBEAT,
   MAVLINK_MSG_ID_CHARGER_STATUS,
   MAVLINK_MSG_ID_SENSOR_DATA,
   MAVLINK_MSG_ID_COMMAND_ACK,
   MAVLINK_MSG_ID_CONFIG_RESPONSE,
+  MAVLINK_MSG_ID_EVCC_STATUS,
+  MAVLINK_MSG_ID_EVCC_CHARGING_AC,
+  MAVLINK_MSG_ID_EVCC_CHARGING_DC,
+  MAVLINK_MSG_ID_EVCC_COMMAND_ACK,
+  MAVLINK_MSG_ID_EVCC_CONFIG_RESPONSE,
   HEARTBEAT_TX_INTERVAL_MS,
   HEARTBEAT_TIMEOUT_MS,
   HEARTBEAT_CHECK_INTERVAL_MS,
 } from '../protocol/constants';
-import type { HeartbeatPayload, ChargerStatusPayload, SensorDataPayload, ChargerCommandPayload, CommandAckPayload, ConfigResponsePayload, MAVLinkMessage } from '../protocol/types';
+import type {
+  HeartbeatPayload, ChargerStatusPayload, SensorDataPayload, ChargerCommandPayload,
+  CommandAckPayload, ConfigResponsePayload, MAVLinkMessage,
+  EvccStatusPayload, EvccChargingAcPayload, EvccChargingDcPayload,
+  EvccCommandPayload, EvccEvParamsPayload, EvccCommandAckPayload, EvccConfigResponsePayload,
+} from '../protocol/types';
 
 /**
  * Heartbeat Manager Events
@@ -42,6 +58,15 @@ export interface HeartbeatManagerEvents {
   'command-ack-received': (payload: CommandAckPayload, message: MAVLinkMessage) => void;
   'config-request-sent': (seq: number) => void;
   'config-response-received': (payload: ConfigResponsePayload, message: MAVLinkMessage) => void;
+  // EVCC events
+  'evcc-status-received': (payload: EvccStatusPayload, message: MAVLinkMessage) => void;
+  'evcc-charging-ac-received': (payload: EvccChargingAcPayload, message: MAVLinkMessage) => void;
+  'evcc-charging-dc-received': (payload: EvccChargingDcPayload, message: MAVLinkMessage) => void;
+  'evcc-command-sent': (payload: EvccCommandPayload, seq: number) => void;
+  'evcc-ev-params-sent': (payload: EvccEvParamsPayload, seq: number) => void;
+  'evcc-command-ack-received': (payload: EvccCommandAckPayload, message: MAVLinkMessage) => void;
+  'evcc-config-request-sent': (seq: number) => void;
+  'evcc-config-response-received': (payload: EvccConfigResponsePayload, message: MAVLinkMessage) => void;
 }
 
 /**
@@ -339,6 +364,16 @@ export class HeartbeatManager extends EventEmitter {
           this.handleCommandAck(message);
         } else if (message.msgid === MAVLINK_MSG_ID_CONFIG_RESPONSE) {
           this.handleConfigResponse(message);
+        } else if (message.msgid === MAVLINK_MSG_ID_EVCC_STATUS) {
+          this.handleEvccStatus(message);
+        } else if (message.msgid === MAVLINK_MSG_ID_EVCC_CHARGING_AC) {
+          this.handleEvccChargingAc(message);
+        } else if (message.msgid === MAVLINK_MSG_ID_EVCC_CHARGING_DC) {
+          this.handleEvccChargingDc(message);
+        } else if (message.msgid === MAVLINK_MSG_ID_EVCC_COMMAND_ACK) {
+          this.handleEvccCommandAck(message);
+        } else if (message.msgid === MAVLINK_MSG_ID_EVCC_CONFIG_RESPONSE) {
+          this.handleEvccConfigResponse(message);
         }
       }
     });
@@ -441,5 +476,92 @@ export class HeartbeatManager extends EventEmitter {
     } catch (error) {
       // Ignore decode errors
     }
+  }
+
+  // ==== EVCC Message Handlers ====
+
+  private handleEvccStatus(message: MAVLinkMessage): void {
+    try {
+      const payload = decodeEvccStatusPayload(message.payload);
+      this.emit('evcc-status-received', payload, message);
+    } catch (error) {
+      // Ignore decode errors
+    }
+  }
+
+  private handleEvccChargingAc(message: MAVLinkMessage): void {
+    try {
+      const payload = decodeEvccChargingAcPayload(message.payload);
+      this.emit('evcc-charging-ac-received', payload, message);
+    } catch (error) {
+      // Ignore decode errors
+    }
+  }
+
+  private handleEvccChargingDc(message: MAVLinkMessage): void {
+    try {
+      const payload = decodeEvccChargingDcPayload(message.payload);
+      this.emit('evcc-charging-dc-received', payload, message);
+    } catch (error) {
+      // Ignore decode errors
+    }
+  }
+
+  private handleEvccCommandAck(message: MAVLinkMessage): void {
+    try {
+      const payload = decodeEvccCommandAckPayload(message.payload);
+      this.emit('evcc-command-ack-received', payload, message);
+    } catch (error) {
+      // Ignore decode errors
+    }
+  }
+
+  private handleEvccConfigResponse(message: MAVLinkMessage): void {
+    try {
+      const payload = decodeEvccConfigResponsePayload(message.payload);
+      this.emit('evcc-config-response-received', payload, message);
+    } catch (error) {
+      // Ignore decode errors
+    }
+  }
+
+  // ==== EVCC Send Methods ====
+
+  public sendEvccCommand(commandPayload: EvccCommandPayload): void {
+    const frame = encodeEvccCommand({
+      sysid: this.sysid,
+      compid: this.compid,
+      seq: this.txSeq,
+      ...commandPayload,
+    });
+    this.serialManager.write(frame);
+    const sentSeq = this.txSeq;
+    this.txSeq = (this.txSeq + 1) & 0xFF;
+    this.emit('evcc-command-sent', commandPayload, sentSeq);
+  }
+
+  public sendEvccEvParams(paramsPayload: EvccEvParamsPayload): void {
+    const frame = encodeEvccEvParams({
+      sysid: this.sysid,
+      compid: this.compid,
+      seq: this.txSeq,
+      ...paramsPayload,
+    });
+    this.serialManager.write(frame);
+    const sentSeq = this.txSeq;
+    this.txSeq = (this.txSeq + 1) & 0xFF;
+    this.emit('evcc-ev-params-sent', paramsPayload, sentSeq);
+  }
+
+  public sendEvccConfigRequest(): void {
+    const frame = encodeEvccConfigRequest({
+      sysid: this.sysid,
+      compid: this.compid,
+      seq: this.txSeq,
+    });
+    this.serialManager.write(frame);
+    const sentSeq = this.txSeq;
+    this.txSeq = (this.txSeq + 1) & 0xFF;
+    this.emit('evcc-config-request-sent', sentSeq);
   }
 }
