@@ -1,294 +1,164 @@
 # MAVLink V2 Lite Monitor
 
-DC Charger와 PC 간 UART 통신을 위한 MAVLink V2 Lite 기반 모니터링 및 제어 애플리케이션
+DC Charger ↔ Host(App Tester / PC Android / PC Windows / JIG) UART 통신을 위한 **MAVLink V2 Lite** 기반 Electron 데스크톱 모니터링·제어 애플리케이션. 이 앱은 SYSID **201 (App Tester)** 로 송신한다.
 
-## 개요
-
-- **프로토콜**: MAVLink V2 Lite (Custom Implementation)
+- **프로토콜**: MAVLink V2 Lite (자체 dialect — STX `0xFC`, 7-byte header, CRC-16/MODBUS over payload). 사양은 [`PROTOCOL.md`](./PROTOCOL.md) 참조
 - **통신**: UART Serial (115200 baud, 8N1)
-- **기술 스택**: Electron + React + TypeScript
-- **현재 Phase**: Phase 2 - 기본 통신 (HEARTBEAT 송수신)
+- **스택**: Electron + React + TypeScript + Vite, 테스트는 Vitest
 
-## 현재 진행 상태
+---
 
-### ✅ 완료된 작업 (Day 1-5)
+## 현재 상태 (2026-05-21)
 
-#### Day 1: 프로젝트 초기 설정
-- [x] package.json, tsconfig.json, vite.config.ts, vitest.config.ts 설정
-- [x] 폴더 구조 생성 (electron/, src/, test/)
-- [x] .gitignore 및 문서화
+- ✅ V2 Lite dialect 마이그레이션 완료 (STX 0xFD→0xFC, 헤더 9B→7B, INCOMPAT/COMPAT 제거)
+- ✅ CRC 알고리즘 교체: CRC-16/CCITT-FALSE + per-msg extra seed → **CRC-16/MODBUS over payload only**
+- ✅ 새 SYSID 컨벤션: Charger=1, PC Android=100, PC Windows=101, JIG=200, **AppTester=201** (이 앱), Broadcast=255
+- ✅ 새 COMPID 컨벤션: ALL=0, DURA=1, MOOEV=2, Parky=3 (모델 식별)
+- ✅ EVCC(20xxx) 메시지군 폐지
+- ✅ 모델 기반 탭 UI: **DURA 활성**, MOOEV/Parky 탭은 비활성(placeholder)
+- ✅ 127개 protocol 테스트 통과 (`vitest run`)
 
-#### Day 2-3: 프로토콜 레이어
-- [x] **CRC-16-CCITT 구현 및 테스트** (21 tests passed)
-- [x] **MAVLink 프로토콜 상수 및 타입 정의**
-- [x] **MAVLink Parser 구현** (state machine, 24 tests passed)
-- [x] **Message Encoder 구현** (HEARTBEAT, 17 tests passed)
-- [x] **Python 참조 구현과 100% 호환 검증**
+### 구현된 메시지
 
-#### Day 4-5: Serial 통신 레이어 (CLI 기반)
-- [x] **SerialPortManager 구현** (포트 연결, 데이터 송수신)
-- [x] **HeartbeatManager 구현** (1000ms TX, RX 모니터링, timeout)
-- [x] **CLI 테스트 스크립트** (`scripts/test-heartbeat.ts`)
+| MSG ID | Name | Direction | Rate | Status |
+|--------|------|-----------|------|--------|
+| 0     | HEARTBEAT       | Bidirectional | 1000 ms | ✅ |
+| 10001 | CHARGER_STATUS  | Board → Host  | 500 ms  | ✅ |
+| 10002 | SENSOR_DATA     | Board → Host  | 1000 ms | ✅ |
+| 10100 | CHARGER_COMMAND | Host → Board  | On cmd  | ✅ |
+| 10102 | COMMAND_ACK     | Board → Host  | On ACK  | ✅ |
+| 10200 | CONFIG_REQUEST  | Host → Board  | On req  | ✅ |
+| 10201 | CONFIG_RESPONSE | Board → Host  | On req  | ✅ |
+| 10101 | MANUAL_CONTROL  | Host → Board  | On cmd  | 🟡 defined, UI pending |
 
-### 📊 테스트 현황
-```
-✓ test/protocol/crc16.test.ts     (21 tests)
-✓ test/protocol/encoder.test.ts   (17 tests)
-✓ test/protocol/parser.test.ts    (24 tests)
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-  Total: 62 tests passed | 1 skipped
-```
-
-자세한 작업 목록은 [TODO.md](./TODO.md) 참조
-
-## 기능 로드맵
-
-### Phase 2 (진행 중)
-- [ ] Serial port 자동 검색 및 연결
-- [ ] HEARTBEAT 메시지 송수신 (1000ms)
-- [ ] 연결 상태 모니터링 (3초 timeout)
-- [ ] 패킷 통계 표시 (RX/TX count, CRC errors)
-
-### Phase 3 (예정)
-- [ ] CHARGER_STATUS 실시간 모니터링 (500ms)
-- [ ] SENSOR_DATA 표시 (1000ms)
-- [ ] 실시간 그래프 (전압, 전류, 전력)
-
-### Phase 4 (예정)
-- [ ] CHARGER_COMMAND 전송 (충전 제어)
-- [ ] RELAY_CONTROL (17개 릴레이 제어)
-- [ ] CONFIG_REQUEST/RESPONSE
+---
 
 ## 빠른 시작
 
 ### 필수 요구사항
-- Node.js 18.x 이상
-- npm 또는 yarn
+- Node.js 18+
 - USB-UART 어댑터 (실제 하드웨어 테스트용)
 - DC Charger 보드 (UART5: TX=PC12, RX=PD2)
 
 ### 설치
-
 ```bash
-# 의존성 설치
 npm install
 ```
 
-### CLI로 보드 테스트 (추천)
-
-**1. 보드 연결**
+### Electron GUI
 ```bash
-# 시리얼 포트 자동 감지 및 연결
-npm run test:heartbeat
+npm run electron:dev      # 개발 모드 (HMR)
+npm run build             # 프로덕션 빌드
+```
 
-# 특정 포트 지정
-npm run test:heartbeat /dev/ttyUSB0    # Linux
+### CLI Heartbeat 테스트
+```bash
+npm run test:heartbeat                       # 자동 포트 감지
+npm run test:heartbeat /dev/ttyUSB0          # Linux
 npm run test:heartbeat /dev/tty.usbserial-*  # macOS
-npm run test:heartbeat COM3           # Windows
+npm run test:heartbeat COM3                  # Windows
 ```
 
-**2. 출력 예시**
-
-**성공적인 연결 (보드에서 하트비트 수신):**
-```
-=============================================================
-         MAVLink V2 Lite Heartbeat Test Tool
-=============================================================
-
-[SCAN] Scanning for serial ports...
-[INFO] Found 2 port(s):
-   1. /dev/ttyUSB0 (FTDI) S/N: DP05GXO4
-   2. /dev/ttyUSB1 (Prolific)
-
-[AUTO] Auto-selected: /dev/ttyUSB0
-[CONNECT] Connecting...
-[OK] Connected to /dev/ttyUSB0 (115200 baud, 8N1)
-
-[START] Starting heartbeat (1000ms TX, monitoring RX)...
-
-[TX] Heartbeat #0 (total sent: 1)
-[RX] Heartbeat from SYS:1 COMP:1 SEQ:0 STATE:ACTIVE TYPE:31 (total received: 1)
-[CONNECTED] Connection established!
-
-----------------------------------------------------------------------
-STATUS REPORT
-   Connection:     CONNECTED
-   Heartbeats:     TX: 5  RX: 5
-   Last RX:        15:30:45 (1.2s ago)
-   Parser:         Total: 5  CRC Errors: 0  Parse Errors: 0
-   Serial:         TX: 105 bytes  RX: 105 bytes
-   Remote Status:  ACTIVE (Type: 31)
-----------------------------------------------------------------------
-```
-
-**TX만 작동 (보드에서 하트비트 미수신 - 현재 상태):**
-```
-[TX] Heartbeat #0 (total sent: 1)
-[TX] Heartbeat #1 (total sent: 2)
-[TX] Heartbeat #2 (total sent: 3)
-
-----------------------------------------------------------------------
-STATUS REPORT
-   Connection:     DISCONNECTED
-   Heartbeats:     TX: 5  RX: 0
-   Last RX:        Never (N/A)
-   Parser:         Total: 0  CRC Errors: 0  Parse Errors: 0
-   Serial:         TX: 105 bytes  RX: 0 bytes
-   NOTE: TX is working but no RX from board. Check:
-         1. Board is sending heartbeats
-         2. UART wiring (TX<->RX crossover)
-         3. Board baud rate (115200 8N1)
-----------------------------------------------------------------------
-```
-
-### 프로토콜 테스트
-
+### 프로토콜 단위 테스트
 ```bash
-# 전체 테스트 실행
-npm test
-
-# 특정 테스트만 실행
-npm test -- crc16.test.ts
-npm test -- encoder.test.ts
-npm test -- parser.test.ts
-
-# UI 모드
-npm run test:ui
+npm test                            # 전체 (126 tests)
+npm test -- crc16.test.ts           # 특정 파일
+npm run test:ui                     # UI 모드
 ```
 
-## 개발
-
-### 개발 서버 실행
-
-```bash
-npm run electron:dev
-```
-
-### 빌드
-
-```bash
-npm run build
-```
-
-### 테스트
-
-```bash
-npm test
-```
+---
 
 ## 하드웨어 연결
 
-1. USB-UART 어댑터를 DC Charger UART5에 연결
-   - TX: PC12 (Board → PC)
-   - RX: PD2 (PC → Board)
-   - GND: 공통 접지
+```
+DC Charger (UART5)          USB-UART Adapter          Host PC
+ TX (PC12) ──────────────── RX                  Serial Port
+ RX (PD2)  ──────────────── TX                  (/dev/ttyUSB0, COM3, ...)
+ GND       ──────────────── GND
+```
 
-2. Serial port 확인
-   - Linux: `/dev/ttyUSB0` 또는 `/dev/ttyACM0`
-   - macOS: `/dev/tty.usbserial-*`
-   - Windows: `COM3`, `COM4` 등
+지원 USB-UART 칩: FTDI FT232, CP2102, CH340.
+
+---
 
 ## 프로젝트 구조
 
 ```
 MAVLinkV2Lite/
-├── package.json                    # ✅ 완료
-├── tsconfig.json                   # ✅ 완료
-├── vite.config.ts                  # ✅ 완료
-├── vitest.config.ts                # ✅ 완료
-├── index.html                      # ✅ 완료
-├── README.md                       # ✅ 완료
-├── TODO.md                         # ✅ 완료
+├── PROTOCOL.md                      # ⭐ V2 Lite wire format 사양 (authoritative)
+├── README.md                        # 이 문서
+├── TODO.md                          # 후속 작업 목록
 │
 ├── docs/
-│   └── MVLink2LiteAPP.md          # ✅ 사양서 (기존)
+│   ├── DEBUGGING.md                 # 트러블슈팅 가이드
+│   └── MVLink2LiteAPP.md            # 레거시 사양 (참고용)
 │
-├── electron/                       # Main process (Node.js)
-│   ├── main.ts                    # ⏳ 미구현 (다음 작업)
-│   ├── preload.ts                 # ⏳ 미구현 (다음 작업)
-│   ├── protocol/                  # ✅ MAVLink 프로토콜 레이어 완료
-│   │   ├── crc16.ts              # ✅ 완료 (21 tests)
-│   │   ├── constants.ts          # ✅ 완료
-│   │   ├── types.ts              # ✅ 완료
-│   │   ├── parser.ts             # ✅ 완료 (24 tests)
-│   │   └── encoder.ts            # ✅ 완료 (17 tests)
-│   ├── serial/                    # ✅ Serial 통신 레이어 완료
-│   │   ├── SerialPortManager.ts  # ✅ 완료
-│   │   └── HeartbeatManager.ts   # ✅ 완료
-│   └── ipc/                       # ⏳ 미구현 (다음 작업)
-│       ├── serialHandlers.ts     # ⏳ 미구현
-│       └── heartbeatHandlers.ts  # ⏳ 미구현
+├── electron/                        # Main process (Node.js)
+│   ├── main.ts                      # Electron entry
+│   ├── preload.ts                   # contextBridge API
+│   ├── protocol/                    # Wire format
+│   │   ├── constants.ts             # STX/SYSID/COMPID/MSG_ID/CRC extras
+│   │   ├── types.ts                 # 메시지/payload 타입
+│   │   ├── crc16.ts                 # CRC-16-CCITT
+│   │   ├── parser.ts                # State-machine 파서
+│   │   └── encoder.ts               # Frame 인코더
+│   ├── serial/                      # Serial 통신
+│   │   ├── SerialPortManager.ts
+│   │   └── HeartbeatManager.ts      # TX 스케줄러 + RX dispatch
+│   └── ipc/
+│       └── heartbeatHandlers.ts     # Main ↔ Renderer IPC
 │
-├── src/                           # Renderer process (React)
-│   ├── main.tsx                   # ⏳ 미구현
-│   ├── App.tsx                    # ⏳ 미구현
-│   ├── components/
-│   │   ├── ConnectionPanel.tsx   # ⏳ 미구현
-│   │   ├── StatusDisplay.tsx     # ⏳ 미구현
-│   │   ├── StatisticsPanel.tsx   # ⏳ 미구현
-│   │   └── MessageLog.tsx        # ⏳ 미구현
+├── src/                             # Renderer (React)
+│   ├── App.tsx                      # 모델 탭 + 패널 레이아웃
+│   ├── App.css
 │   ├── context/
-│   │   ├── AppContext.tsx        # ⏳ 미구현
-│   │   └── appReducer.ts         # ⏳ 미구현
-│   ├── hooks/
-│   │   ├── useSerialConnection.ts # ⏳ 미구현
-│   │   └── useHeartbeat.ts       # ⏳ 미구현
-│   └── types/
-│       └── electron.d.ts         # ⏳ 미구현 (다음 작업)
+│   │   ├── AppContext.tsx
+│   │   └── appReducer.ts            # detectedModel / activeModel 등
+│   ├── hooks/                       # useHeartbeat, useChargerData, ...
+│   ├── components/                  # ConnectionPanel, ChargerStatusPanel, ...
+│   └── types/electron.d.ts
 │
-├── test/                          # ✅ 테스트 완료
-│   └── protocol/
-│       ├── crc16.test.ts         # ✅ 완료 (21 tests)
-│       ├── parser.test.ts        # ✅ 완료 (24 tests)
-│       └── encoder.test.ts       # ✅ 완료 (17 tests)
-│
-└── scripts/                        # ✅ CLI 도구 완료
-    └── test-heartbeat.ts          # ✅ 완료 (Heartbeat CLI 테스트)
-
-범례: ✅ 완료, ⏳ 미구현
+├── test/protocol/                   # Vitest (126 tests, 7 files)
+└── scripts/test-heartbeat.ts        # CLI 검증 도구
 ```
+
+### 데이터 흐름 (RX)
+```
+SerialPort 'data'
+  → HeartbeatManager.setupDataHandler()
+    → MAVLinkParser.parseBuffer()
+    → switch(msgid) → emit 메시지별 이벤트
+  → heartbeatHandlers.ts (webContents.send)
+  → preload.ts (ipcRenderer.on)
+  → React hooks → reducer → 컴포넌트 리렌더
+```
+
+### 데이터 흐름 (TX, on-demand)
+```
+React 버튼 클릭
+  → window.electron.*.send()
+  → ipcMain.handle
+  → HeartbeatManager.send*()  (heartbeat와 txSeq 공유)
+  → serialManager.write()
+```
+
+---
+
+## 모델 탭 UI
+
+`useHeartbeat` 훅이 charger heartbeat의 COMPID(1/2/3)를 모델(DURA/MOOEV/Parky)로 매핑하여 `detectedModel` 상태에 반영하고, 헤더 우측 배지에 표시한다. 탭은 사용자가 선택한 `activeModel`로 별도 관리되며 — 현재는 **DURA만 활성**, MOOEV/Parky 탭은 disabled 상태로 후속 구현을 대기한다.
+
+---
 
 ## 참고 문서
 
-### 프로젝트 문서
-- [TODO 리스트](./TODO.md) - 다음 작업 항목 (Phase 2: Electron GUI 개발)
-- [MAVLink V2 Lite 사양서](./docs/MVLink2LiteAPP.md) - 전체 시스템 사양
+- **[PROTOCOL.md](./PROTOCOL.md)** — Wire format / 메시지 / CRC / 예제 (인증된 단일 출처)
+- **[TODO.md](./TODO.md)** — 다음 작업
+- **[docs/DEBUGGING.md](./docs/DEBUGGING.md)** — 통신 트러블슈팅
+- **[docs/MVLink2LiteAPP.md](./docs/MVLink2LiteAPP.md)** — 레거시 사양 (배경 정보용)
 
-### 참조 구현 (기존 펌웨어 프로젝트)
-- **Python 테스트 툴**: `/Users/gilbert/00_EVAR/01_code/03_DC_Charger/evar-dc-charger/test/`
-  - `test_crc16_ccitt.py` - CRC 구현 참조
-  - `test_mavlink_protocol.py` - 프로토콜 인코더/디코더 참조
-- **C 펌웨어**: `/Users/gilbert/00_EVAR/01_code/03_DC_Charger/evar-dc-charger/drivers/serial_link/`
-  - `serial_link_protocol.h` - 메시지 정의
-  - `serial_link_protocol.c` - 인코더/디코더 구현
-
-## 개발 가이드
-
-### 현재 진행 상태
-- **Phase 1 완료**: 프로토콜 레이어 + Serial 통신 레이어 + CLI 테스트
-  - 62개 테스트 통과
-  - CLI로 하드웨어 테스트 가능
-- **Phase 2 진행 중**: Electron GUI 애플리케이션 개발
-
-### 다음 세션 시작 방법
-1. `TODO.md` 파일 확인하여 다음 작업 파악
-2. Phase 2 시작: Electron Main Process 구현
-   - `electron/main.ts` - BrowserWindow 생성, IPC 설정
-   - `electron/preload.ts` - contextBridge API 노출
-   - `electron/ipc/` - IPC Handlers 구현
-3. 기존 SerialPortManager, HeartbeatManager 재사용
-4. `npm run electron:dev`로 GUI 테스트
-
-### 코딩 규칙
-- **TypeScript**: 엄격한 타입 체크 사용 (`strict: true`)
-- **명명 규칙**:
-  - 파일명: camelCase.ts
-  - 클래스: PascalCase
-  - 함수/변수: camelCase
-  - 상수: UPPER_SNAKE_CASE
-- **주석**: JSDoc 스타일로 공개 API 문서화
-- **테스트**: 각 모듈마다 대응하는 테스트 파일 작성
+---
 
 ## 라이센스
 
-MIT License - Copyright (c) 2026 Gilbert
+MIT License — Copyright (c) 2026 Gilbert

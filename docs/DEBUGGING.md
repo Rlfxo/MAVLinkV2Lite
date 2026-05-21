@@ -78,24 +78,31 @@ huart5.Init.Parity = UART_PARITY_NONE;
 
 ---
 
-### 4. MAVLink 프레임 포맷이 맞는가?
+### 4. MAVLink V2 Lite 프레임 포맷이 맞는가?
 
-**올바른 MAVLink V2 프레임:**
+**올바른 V2 Lite HEARTBEAT 프레임 (Charger DURA, SEQ=0):**
 ```
-FD 09 00 00 00 01 01 00 00 00 00 00 00 00 1F 00 00 04 03 D8 68
-^  ^                          ^                             ^
-STX LEN                    MSGID                          CRC
+FC 02 00 01 01 00 00 00 03 03 41 41
+^  ^                    ^     ^
+STX LEN                MSGID  CRC (CRC-16/MODBUS over payload)
 ```
+
+V2 Lite는 upstream MAVLink V2와 다음 3가지 점에서 다르다:
+1. STX `0xFC` (vs upstream `0xFD`)
+2. 헤더 7 B (INCOMPAT/COMPAT 제거 — vs upstream 9 B)
+3. CRC: **CRC-16/MODBUS over payload only** (vs upstream CRC-16/CCITT-FALSE + per-msg seed over header+payload)
+
+자세한 사양은 [`PROTOCOL.md`](../PROTOCOL.md) 참조. HEARTBEAT 페이로드가 `[0x03, 0x03]`로 동일하면 송신자(SYSID/COMPID/SEQ)가 달라도 CRC는 항상 `41 41`이라는 점에 유의.
 
 **보드 코드 확인:**
 ```c
-// STX는 반드시 0xFD
-frame[0] = 0xFD;
+// STX는 반드시 0xFC (V2 Lite)
+frame[0] = 0xFC;
 
-// CRC 계산이 올바른지 확인
-uint16_t crc = crc16_init();
-crc = crc16_accumulate_buffer(crc, &frame[1], frame_len - 3);
-crc = crc16_accumulate(crc, crc_extra);  // HEARTBEAT = 50
+// CRC: payload에 대해 한 번만 호출 — extra seed table 없음
+uint16_t crc = crc16_modbus(payload, payload_len);
+frame[crc_offset]     = crc & 0xFF;        // LE low
+frame[crc_offset + 1] = (crc >> 8) & 0xFF; // LE high
 ```
 
 ---
@@ -109,7 +116,7 @@ crc = crc16_accumulate(crc, crc_extra);  // HEARTBEAT = 50
 **확인할 것:**
 1. **TX 핀 (PC12)**: 데이터가 나가는지
 2. **Baud rate**: 115200인지
-3. **프레임 포맷**: 0xFD로 시작하는지
+3. **프레임 포맷**: 0xFC(V2 Lite)로 시작하는지
 4. **프레임 간격**: 1000ms (1초마다)
 
 **예상 파형:**

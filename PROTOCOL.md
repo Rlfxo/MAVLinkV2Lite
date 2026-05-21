@@ -1,10 +1,10 @@
 # MAVLink V2 Lite Protocol Specification
 
-DC Charger - PC 간 UART 시리얼 통신 프로토콜 사양서
+DC Charger ↔ Host (PC Android / PC Windows / JIG / App Tester) UART serial protocol specification.
 
-**Version**: 1.1
-**Date**: 2026-02-11
-**Status**: Phase 4 - CHARGER_COMMAND / COMMAND_ACK 구현 완료
+**Version**: 2.1
+**Date**: 2026-05-21
+**Status**: V2 Lite dialect (header 8 bytes, STX 0xFC). **CRC switched to CRC-16/MODBUS over payload only** (no header coverage, no per-message extra seed). EVCC (20xxx) message family removed.
 
 ---
 
@@ -23,130 +23,148 @@ DC Charger - PC 간 UART 시리얼 통신 프로토콜 사양서
 ### Hardware Connection
 
 ```
-DC Charger (UART5)          USB-UART Adapter          PC
+DC Charger (UART5)          USB-UART Adapter          Host
  TX (PC12) ──────────────── RX                  Serial Port
  RX (PD2)  ──────────────── TX                  (e.g. /dev/ttyUSB0, COM3)
  GND       ──────────────── GND
 ```
 
-지원 USB-UART 칩: FTDI FT232, CP2102, CH340
+Supported USB-UART chips: FTDI FT232, CP2102, CH340.
 
 ---
 
 ## 2. Frame Structure
 
-MAVLink V2 Lite 프레임은 다음 필드로 구성된다.
+MAVLink V2 Lite frames are composed of an 8-byte prefix (STX + 7-byte header), a 0–255 byte payload, and a 2-byte CRC. This is a simplified dialect of upstream MAVLink V2: the `INCOMPAT_FLAGS` / `COMPAT_FLAGS` bytes (always 0 in this project) are removed, and the STX is changed from `0xFD` to `0xFC` to make the two dialects distinguishable at frame-sync time.
 
 ```
- Byte:  0     1     2       3       4     5       6       7        8        9       10..N    N+1   N+2
-      +-----+-----+-------+-------+-----+-------+-------+--------+--------+--------+-------+-----+-----+
-      | STX | LEN | IFLAGS| CFLAGS| SEQ | SYSID | COMPID| MSGID_L| MSGID_M| MSGID_H|PAYLOAD| CRC_L|CRC_H|
-      +-----+-----+-------+-------+-----+-------+-------+--------+--------+--------+-------+-----+-----+
-      |0xFD | 0-255|  0x00 |  0x00 |0-255| 1/255 |   0   |      24-bit MSG ID     | 0~255B|  CRC-16   |
+ Byte:  0     1     2     3       4       5        6        7        8..N    N+1   N+2
+      +-----+-----+-----+-------+-------+--------+--------+--------+-------+-----+-----+
+      | STX | LEN | SEQ | SYSID | COMPID| MSGID_L| MSGID_M| MSGID_H|PAYLOAD| CRC_L|CRC_H|
+      +-----+-----+-----+-------+-------+--------+--------+--------+-------+-----+-----+
+      |0xFC |0-255|0-255|  any  |  any  |      24-bit MSG ID       | 0~255B|  CRC-16   |
 ```
 
 ### Field Description
 
 | Offset | Field | Size | Description |
 |--------|-------|------|-------------|
-| 0 | STX | 1 | Start-of-frame marker. 항상 `0xFD` |
-| 1 | LEN | 1 | Payload 길이 (0~255 bytes) |
-| 2 | IFLAGS | 1 | Incompatibility flags. 항상 `0x00` |
-| 3 | CFLAGS | 1 | Compatibility flags. 항상 `0x00` |
-| 4 | SEQ | 1 | Packet sequence number (0~255, wrap-around) |
-| 5 | SYSID | 1 | Sender system ID |
-| 6 | COMPID | 1 | Sender component ID |
-| 7 | MSGID_L | 1 | Message ID low byte |
-| 8 | MSGID_M | 1 | Message ID mid byte |
-| 9 | MSGID_H | 1 | Message ID high byte |
-| 10 | PAYLOAD | LEN | Message-specific payload data |
-| 10+LEN | CRC_L | 1 | CRC-16 checksum low byte |
-| 11+LEN | CRC_H | 1 | CRC-16 checksum high byte |
+| 0 | STX | 1 | Start-of-frame marker. Always `0xFC` (distinguishes V2 Lite from upstream V2 0xFD) |
+| 1 | LEN | 1 | Payload length (0–255 bytes) |
+| 2 | SEQ | 1 | Packet sequence number (0–255, wrap-around) |
+| 3 | SYSID | 1 | Sender system ID |
+| 4 | COMPID | 1 | Sender component ID |
+| 5 | MSGID_L | 1 | Message ID low byte |
+| 6 | MSGID_M | 1 | Message ID mid byte |
+| 7 | MSGID_H | 1 | Message ID high byte |
+| 8 | PAYLOAD | LEN | Message-specific payload data |
+| 8+LEN | CRC_L | 1 | CRC-16 checksum low byte |
+| 9+LEN | CRC_H | 1 | CRC-16 checksum high byte |
 
-- **Minimum frame size**: 12 bytes (payload 0 bytes)
-- **Maximum frame size**: 267 bytes (payload 255 bytes)
+- **Minimum frame size**: 10 bytes (payload 0 bytes)
+- **Maximum frame size**: 265 bytes (payload 255 bytes)
 
-### System ID / Component ID
+### System ID Convention
 
-| Device | SYSID | COMPID | Description |
-|--------|-------|--------|-------------|
-| DC Charger | 1 | 0 | 충전기 메인 컨트롤러 |
-| PC / App | 255 | 0 | 모니터링/제어 앱 |
+Single-charger ↔ multi-host topology: one charger may talk to several hosts, so each host advertises a distinct SYSID.
+
+| SYSID | Role | Description |
+|-------|------|-------------|
+| 1   | Charger     | DC Charger main controller |
+| 100 | PC Android  | PC Android operator app |
+| 101 | PC Windows  | PC Windows operator app |
+| 200 | JIG         | JIG tester (production/QA fixture) |
+| 201 | AppTester   | App-side test/monitoring app (this Electron project) |
+| 255 | Broadcast   | Target all listeners |
+
+### Component ID Convention
+
+COMPID identifies the *charger model* on the charger side. Hosts that are not a charger model send `COMPID=0` (ALL). The model is observable from the very first frame, before any CONFIG_RESPONSE arrives, so the UI can route by model immediately.
+
+| COMPID | Name  | Description |
+|--------|-------|-------------|
+| 0 | ALL   | Host that is not a charger model, or "address all components" |
+| 1 | DURA  | Charger model: DURA |
+| 2 | MOOEV | Charger model: MOOEV |
+| 3 | Parky | Charger model: Parky |
 
 ---
 
 ## 3. CRC Calculation
 
-### Algorithm: CRC-16-CCITT-FALSE
+### Algorithm: CRC-16/MODBUS
 
 | Parameter | Value |
 |-----------|-------|
-| Polynomial | 0x1021 |
+| Polynomial | 0x8005 (reflected: 0xA001) |
 | Initial Value | 0xFFFF |
-| Input Reflection | No |
-| Output Reflection | No |
+| Input Reflection | Yes |
+| Output Reflection | Yes |
 | Final XOR | 0x0000 |
+| Wire encoding | 2 bytes, little-endian |
 
 ### CRC Scope
 
-CRC는 다음 범위에 대해 계산한다:
-1. **Header** (STX 제외): `LEN`, `IFLAGS`, `CFLAGS`, `SEQ`, `SYSID`, `COMPID`, `MSGID_L`, `MSGID_M`, `MSGID_H` (9 bytes)
-2. **Payload**: 0~255 bytes
-3. **CRC Extra**: Message ID별 고유 시드값 1 byte (아래 테이블 참조)
+CRC is computed over the **payload bytes only** — no header bytes, no STX, no per-message extra seed.
 
 ```
-CRC Input = [LEN .. MSGID_H] + [PAYLOAD] + [CRC_EXTRA]
-          = Header(9 bytes) + Payload(N bytes) + CRC_Extra(1 byte)
+CRC Input = [PAYLOAD]   (LEN bytes, 0..255)
 ```
 
-### CRC Extra Values
-
-CRC Extra는 메시지 구조의 변경을 감지하기 위한 시드값이다.
-송수신 양측이 동일한 값을 사용해야 통신이 성립한다.
-
-| Message ID | Message Name | CRC Extra |
-|------------|-------------|-----------|
-| 0 | HEARTBEAT | 142 |
-| 10001 | CHARGER_STATUS | 66 |
-| 10002 | SENSOR_DATA | 120 |
-| 10100 | CHARGER_COMMAND | 193 |
-| 10102 | COMMAND_ACK | 222 |
-| 10101 | MANUAL_CONTROL | 239 |
-| 10200 | CONFIG_REQUEST | 142 |
-| 10201 | CONFIG_RESPONSE | 128 |
+- For a 0-byte payload (e.g. CONFIG_REQUEST) the CRC is the MODBUS initial value `0xFFFF`.
+- The header (LEN, SEQ, SYSID, COMPID, MSGID) is **not** covered by the CRC. A corrupted header byte will still produce a structurally-valid frame; protect against this at the application layer if needed (e.g. validate SYSID/MSGID against expected ranges before acting on a message).
+- There is no per-message CRC extra table in V2 Lite. Schema drift detection (if needed) must come from a different mechanism such as explicit version fields in the payload, CONFIG_RESPONSE comparison, etc.
 
 ### CRC Pseudocode
 
 ```
-// CRC-16-CCITT-FALSE with 256-entry lookup table
-function crc16_accumulate(crc: uint16, byte: uint8) -> uint16:
-    tmp = byte ^ (crc >> 8)
-    return ((crc << 8) ^ CRC16_TABLE[tmp]) & 0xFFFF
-
-function crc16_calculate(data: byte[], crc_extra: uint8) -> uint16:
+// CRC-16/MODBUS, reflected
+function crc16_modbus(payload: byte[]) -> uint16:
     crc = 0xFFFF
-    for each byte in data:
-        crc = crc16_accumulate(crc, byte)
-    crc = crc16_accumulate(crc, crc_extra)
-    return crc
+    for each b in payload:
+        crc ^= b
+        for j = 0..7:
+            if crc & 1:
+                crc = (crc >> 1) ^ 0xA001
+            else:
+                crc = crc >> 1
+    return crc & 0xFFFF
 ```
 
-CRC16_TABLE은 CRC-16-CCITT (poly=0x1021)의 표준 256-entry lookup table이다.
+Table-driven equivalent (recommended for streaming):
+
+```
+crc = (crc >> 8) ^ MODBUS_TABLE[(crc ^ byte) & 0xFF]
+```
+
+where `MODBUS_TABLE[i]` is the standard reflected MODBUS 256-entry table.
 
 ### CRC Verification Example
 
-HEARTBEAT 메시지 (PC → Charger, SEQ=0):
-```
-Frame:  FD 02 00 00 00 FF 00 00 00 00  03 03  19 6A
-        |  |                              |pld|  |CRC|
-        |  +-- LEN=2                              |
-        +-- STX                                   |
-                                                  |
-CRC Input: [02 00 00 00 FF 00 00 00 00] + [03 03] + [8E]
-           |--- header (9 bytes) ---|     |2 B|    |CRC Extra=142(0x8E)|
+App Tester HEARTBEAT (SYSID=201, COMPID=0, SEQ=0, payload `03 03`):
 
-Result:  CRC = 0x6A19 → CRC_L=0x19, CRC_H=0x6A
 ```
+Frame:  FC 02 00 C9 00 00 00 00  03 03  41 41
+        |  |                      |pld|  |CRC|
+        |  +-- LEN=2                     |
+        +-- STX (V2 Lite)                |
+
+CRC Input: [03 03]   ← payload only
+Result:    crc16_modbus([0x03, 0x03]) = 0x4141 → CRC_L=0x41, CRC_H=0x41
+```
+
+> **Note**: Because the CRC only covers the payload, two frames with the same payload (e.g. any two HEARTBEATs with `system_status=RUN, mavlink_version=3`) will share the same trailing CRC bytes regardless of sender SYSID/COMPID/SEQ.
+
+### Standard MODBUS Reference Vectors
+
+To validate implementations:
+
+| Input | Expected CRC |
+|-------|-------------|
+| (empty) | `0xFFFF` |
+| `"123456789"` (ASCII) | `0x4B37` |
+| `[0x00]` | `0x40BF` |
+| `[0x03, 0x03]` | `0x4141` |
 
 ---
 
@@ -154,8 +172,7 @@ Result:  CRC = 0x6A19 → CRC_L=0x19, CRC_H=0x6A
 
 ### 4.1 HEARTBEAT (MSG_ID: 0)
 
-연결 상태 확인 및 Keep-alive. 양방향 1000ms 전송.
-응답 없이 각자 독립적으로 전송하며, 상대방의 생존 여부만 판단한다.
+Liveness keep-alive. Bidirectional, 1000 ms. Each side transmits independently; no acknowledgement is expected.
 
 | Direction | Rate | Payload Size |
 |-----------|------|-------------|
@@ -166,8 +183,8 @@ Result:  CRC = 0x6A19 → CRC_L=0x19, CRC_H=0x6A
 ```
 Offset  Size    Type        Field             Description
 ───────────────────────────────────────────────────────────────
-0       1       uint8_t     system_status     시스템 상태 (MAV_STATE)
-1       1       uint8_t     mavlink_version   프로토콜 버전 (항상 3)
+0       1       uint8_t     system_status     MAV_STATE
+1       1       uint8_t     mavlink_version   Protocol version (always 3)
 ───────────────────────────────────────────────────────────────
 Total: 2 bytes
 ```
@@ -176,82 +193,47 @@ Total: 2 bytes
 
 | Value | Name | Description |
 |-------|------|-------------|
-| 0 | UNINIT | 미초기화 |
-| 1 | BOOT | 부팅 중 |
-| 2 | STANDBY | 대기 (idle) |
-| 3 | RUN | 정상 동작 |
-| 4 | ERROR | 에러 |
-| 5 | SHUTDOWN | RUN → STANDBY 전환 (종료 절차) |
-
-#### PC Heartbeat (TX)
-
-```
-system_status   = 3 (RUN)
-mavlink_version = 3
-```
-
-#### DC Charger Heartbeat (RX)
-
-```
-system_status   = 3 (RUN) or others
-mavlink_version = 3
-```
+| 0 | UNINIT | Not initialized |
+| 1 | BOOT | Booting |
+| 2 | STANDBY | Idle |
+| 3 | RUN | Normal operation |
+| 4 | ERROR | Error |
+| 5 | SHUTDOWN | RUN → STANDBY transition (shutdown sequence) |
 
 #### Connection Monitoring
 
-- **Timeout**: 3초 이내 HEARTBEAT 미수신 시 연결 끊김 판정
-- **Check interval**: 100ms 주기로 timeout 검사
+- **Timeout**: connection lost if no HEARTBEAT received for 3 seconds
+- **Check interval**: 100 ms
 
 ---
 
-### 4.2 CHARGER_STATUS (MSG_ID: 10001) - Phase 3
+### 4.2 CHARGER_STATUS (MSG_ID: 10001)
 
-충전기 운영 상태. DC Charger → PC, 500ms.
-방전(SECC)/재충전(EVCC) 상태, BMS 정보, 릴레이, 진단 정보를 포함한다.
-실시간 전기 측정값(voltage, current)은 SENSOR_DATA(10002)에서 전송한다.
+Charger operational state. Charger → Host, 500 ms.
+Discharge / recharge state, BMS info, relay bitmap, diagnostics.
+Real-time electrical measurements (voltage, current) are carried in SENSOR_DATA (10002).
 
 | Direction | Rate | Payload Size |
 |-----------|------|-------------|
-| Board → PC | 500 ms | 16 bytes |
+| Board → Host | 500 ms | 16 bytes |
 
 #### Payload Structure
 
 ```
 Offset  Size    Type        Field           Description              Unit
 ──────────────────────────────────────────────────────────────────────────
-0       1       uint8_t     discharging     방전 상태 (SECC)          0=off, 1~255
-1       1       uint8_t     recharging      재충전 상태 (EVCC)        0=off, 1~255
-2       1       uint8_t     bms_vendor      BMS 벤더                  enum
-3       2       uint16_t    bms_cap         BMS 용량                  kWh
-5       1       uint8_t     out_cap         아웃풋 컨버터 최대 용량     kW
+0       1       uint8_t     discharging     Discharge state           0=off, 1~255
+1       1       uint8_t     recharging      Recharge state            0=off, 1~255
+2       1       uint8_t     bms_vendor      BMS vendor                enum
+3       2       uint16_t    bms_cap         BMS capacity              kWh
+5       1       uint8_t     out_cap         Output converter max cap. kW
 6       1       uint8_t     bms_soc         SOC                       %
-7       1       uint8_t     diagnosis       진단 플래그                bitmask
-8       4       uint32_t    relay_bitmap    릴레이 비트맵              bitmask
-12      4       uint32_t    uptime_sec      시스템 업타임              sec
+7       1       uint8_t     diagnosis       Diagnosis flags           bitmask
+8       4       uint32_t    relay_bitmap    Relay bitmap              bitmask
+12      4       uint32_t    uptime_sec      System uptime             sec
 ──────────────────────────────────────────────────────────────────────────
 Total: 16 bytes
 ```
-
-#### discharging (SECC State Values)
-
-| Value | Description |
-|-------|-------------|
-| 0 | OFF (방전 비활성) |
-| 1~255 | SECC 상태 코드 (프로토콜별 정의) |
-
-#### recharging (EVCC State Values)
-
-| Value | Description |
-|-------|-------------|
-| 0 | OFF (재충전 비활성) |
-| 1~255 | EVCC 상태 코드 (프로토콜별 정의) |
-
-#### bms_vendor Values
-
-| Value | Name | Description |
-|-------|------|-------------|
-| 0 | UNKNOWN | 미지정 |
-| 1~ | TBD | 벤더별 코드 (추후 정의) |
 
 #### relay_bitmap Bit Assignments
 
@@ -265,36 +247,36 @@ Total: 16 bytes
 
 ---
 
-### 4.3 SENSOR_DATA (MSG_ID: 10002) - Phase 3
+### 4.3 SENSOR_DATA (MSG_ID: 10002)
 
-센서 데이터. DC Charger → PC, 1000ms.
-환경 센서(온습도), IMU(가속도/자이로), DCGF, 전력량계, IMD 데이터를 포함한다.
+Sensor readings. Charger → Host, 1000 ms.
+Environment (temp/humidity), IMU (accel/gyro), DCGF, power meter, IMD.
 
 | Direction | Rate | Payload Size |
 |-----------|------|-------------|
-| Board → PC | 1000 ms | 52 bytes |
+| Board → Host | 1000 ms | 52 bytes |
 
 #### Payload Structure
 
 ```
 Offset  Size    Type        Field             Description              Unit
 ──────────────────────────────────────────────────────────────────────────────
-0       4       float       temperature_C     온도                      degC
-4       4       float       humidity_pct      습도                      %
-8       4       float       accel_x_mps2      가속도 X                  m/s^2
-12      4       float       accel_y_mps2      가속도 Y                  m/s^2
-16      4       float       accel_z_mps2      가속도 Z                  m/s^2
-20      4       float       gyro_x_dps        자이로 X                  deg/s
-24      4       float       gyro_y_dps        자이로 Y                  deg/s
-28      4       float       gyro_z_dps        자이로 Z                  deg/s
-32      2       uint16_t    dcgf_fault        DCGF 고장 코드
-34      2       uint16_t    dcgf_volt1        DCGF 전압 1               mV
-36      2       uint16_t    dcgf_volt2        DCGF 전압 2               mV
-38      4       uint32_t    meter_voltage     전력량계 전압              mV
-42      4       uint32_t    meter_current     전력량계 전류              mA
-46      4       uint32_t    meter_energy      전력량계 누적량             Wh
-50      1       uint8_t     imd_stop_mode     IMD 정지 모드
-51      1       uint8_t     reserved          예약 (alignment)
+0       4       float       temperature_C     Temperature              degC
+4       4       float       humidity_pct      Humidity                 %
+8       4       float       accel_x_mps2      Accel X                  m/s^2
+12      4       float       accel_y_mps2      Accel Y                  m/s^2
+16      4       float       accel_z_mps2      Accel Z                  m/s^2
+20      4       float       gyro_x_dps        Gyro X                   deg/s
+24      4       float       gyro_y_dps        Gyro Y                   deg/s
+28      4       float       gyro_z_dps        Gyro Z                   deg/s
+32      2       uint16_t    dcgf_fault        DCGF fault code
+34      2       uint16_t    dcgf_volt1        DCGF voltage 1           mV
+36      2       uint16_t    dcgf_volt2        DCGF voltage 2           mV
+38      4       uint32_t    meter_voltage     Power-meter voltage      mV
+42      4       uint32_t    meter_current     Power-meter current      mA
+46      4       uint32_t    meter_energy      Power-meter energy       Wh
+50      1       uint8_t     imd_stop_mode     IMD stop mode
+51      1       uint8_t     reserved          Reserved (alignment)
 ──────────────────────────────────────────────────────────────────────────────
 Total: 52 bytes
 ```
@@ -303,20 +285,20 @@ Total: 52 bytes
 
 ### 4.4 CHARGER_COMMAND (MSG_ID: 10100)
 
-충전기 제어 명령. PC → DC Charger, On-demand.
-전송 후 DC Charger는 COMMAND_ACK(10102)로 응답한다.
+Charger control command. Host → Charger, on-demand.
+Charger responds with COMMAND_ACK (10102).
 
 | Direction | Rate | Payload Size |
 |-----------|------|-------------|
-| PC → Board | On command | 3 bytes |
+| Host → Board | On command | 3 bytes |
 
 #### Payload Structure
 
 ```
 Offset  Size    Type        Field             Description              Unit
 ──────────────────────────────────────────────────────────────────────────────
-0       2       uint16_t    max_power_kw      최대 전력                  kW
-2       1       uint8_t     command           명령 타입
+0       2       uint16_t    max_power_kw      Max power                kW
+2       1       uint8_t     command           Command type
 ──────────────────────────────────────────────────────────────────────────────
 Total: 3 bytes
 ```
@@ -325,28 +307,27 @@ Total: 3 bytes
 
 | Value | Name | Description |
 |-------|------|-------------|
-| 0 | STOP | 정지 |
-| 1 | DISCHARGE | 방전 (차량 충전) |
-| 2 | RECHARGE | ESS 재충전 |
+| 0 | STOP | Stop |
+| 1 | DISCHARGE | Discharge (vehicle charging) |
+| 2 | RECHARGE | ESS recharge |
 
 ---
 
 ### 4.5 COMMAND_ACK (MSG_ID: 10102)
 
-명령 응답. DC Charger → PC.
-CHARGER_COMMAND(10100) 수신 시 처리 결과를 ACK로 회신한다.
+Command acknowledgement. Charger → Host. Issued in response to CHARGER_COMMAND (10100).
 
 | Direction | Rate | Payload Size |
 |-----------|------|-------------|
-| Board → PC | On ACK | 3 bytes |
+| Board → Host | On ACK | 3 bytes |
 
 #### Payload Structure
 
 ```
 Offset  Size    Type        Field             Description
 ──────────────────────────────────────────────────────────────────
-0       2       uint16_t    target_msg_id     ACK 대상 MSG_ID
-2       1       uint8_t     result            처리 결과
+0       2       uint16_t    target_msg_id     ACK target MSG_ID
+2       1       uint8_t     result            Processing result
 ──────────────────────────────────────────────────────────────────
 Total: 3 bytes
 ```
@@ -355,19 +336,19 @@ Total: 3 bytes
 
 | Value | Name | Description |
 |-------|------|-------------|
-| 0 | ACCEPTED | 명령 수락, 실행 중 |
-| 1 | DENIED | 명령 거부 (현재 상태에서 불가) |
-| 2 | ERROR | 처리 중 에러 발생 |
-| 3 | UNSUPPORTED | 지원하지 않는 명령 |
+| 0 | ACCEPTED | Accepted, executing |
+| 1 | DENIED | Rejected (not allowed in current state) |
+| 2 | ERROR | Processing error |
+| 3 | UNSUPPORTED | Command not supported |
 
 #### Sequence Diagram
 
 ```
-PC (SYSID=255)                           DC Charger (SYSID=1)
+App Tester (SYSID=201, COMPID=0)             DC Charger (SYSID=1, COMPID=DURA/MOOEV/Parky)
      |                                          |
      |--- CHARGER_COMMAND (10100) ------------>|
      |    max_power_kw=150, command=1           |
-     |                                          |  (처리)
+     |                                          |  (process)
      |<-- COMMAND_ACK (10102) -----------------|
      |    target_msg_id=10100, result=0         |
      |    (ACCEPTED)                            |
@@ -376,85 +357,67 @@ PC (SYSID=255)                           DC Charger (SYSID=1)
 
 ---
 
-### 4.6 MANUAL_CONTROL (MSG_ID: 10101) - Phase 5
+### 4.6 MANUAL_CONTROL (MSG_ID: 10101) — Defined
 
-JIG/테스트용 강제 제어 명령. PC → DC Charger, On-demand.
-매뉴얼 모드 진입 시 보드의 자율 제어를 무시하고 릴레이 및 충방전을 강제 제어한다.
+JIG / test forced control. Host → Charger, on-demand. While manual mode is on, the board overrides its autonomous logic and applies the relay bitmap and force command directly.
 
 | Direction | Rate | Payload Size |
 |-----------|------|-------------|
-| PC → Board | On command | 6 bytes |
+| Host → Board | On command | 6 bytes |
 
 #### Payload Structure
 
 ```
 Offset  Size    Type        Field             Description
 ──────────────────────────────────────────────────────────────
-0       1       uint8_t     manual_mode       매뉴얼 모드 (0=OFF, 1=ON)
-1       4       uint32_t    relay_bitmap      릴레이 강제 제어 비트맵
-5       1       uint8_t     force_command     강제 명령
+0       1       uint8_t     manual_mode       Manual mode (0=OFF, 1=ON)
+1       4       uint32_t    relay_bitmap      Relay force-control bitmap
+5       1       uint8_t     force_command     Force command
 ──────────────────────────────────────────────────────────────
 Total: 6 bytes
 ```
 
-#### manual_mode Values
+#### manual_mode / force_command Values
 
-| Value | Name | Description |
-|-------|------|-------------|
-| 0 | OFF | 매뉴얼 모드 해제 (보드 자율 제어 복귀) |
-| 1 | ON | 매뉴얼 모드 진입 (이하 필드 적용) |
-
-#### force_command Values
-
-| Value | Name | Description |
-|-------|------|-------------|
-| 0 | NONE | 강제 명령 없음 (릴레이만 제어) |
-| 1 | FORCE_DISCHARGE | 강제 방전 |
-| 2 | FORCE_RECHARGE | 강제 재충전 |
-
-#### relay_bitmap
-
-manual_mode=ON일 때 릴레이 직접 제어 (bit=1: ON, bit=0: OFF)
-
-| Bit | Relay | Description |
-|-----|-------|-------------|
-| 0 | RY1 | Relay 1 |
-| 1 | RY2 | Relay 2 |
-| ... | ... | ... |
-| 15 | RY16 | Relay 16 |
-| 16 | MC | Main Contactor |
+| Field | Value | Name | Description |
+|-------|-------|------|-------------|
+| manual_mode  | 0 | OFF | Release manual mode (return to autonomous control) |
+| manual_mode  | 1 | ON  | Enter manual mode (apply the fields below) |
+| force_command| 0 | NONE | No force command (relays only) |
+| force_command| 1 | FORCE_DISCHARGE | Force discharge |
+| force_command| 2 | FORCE_RECHARGE  | Force recharge |
 
 ---
 
-### 4.7 CONFIG_REQUEST (MSG_ID: 10200) - Phase 5
+### 4.7 CONFIG_REQUEST (MSG_ID: 10200)
 
-설정 정보 요청. PC → DC Charger, On-demand.
+Request configuration. Host → Charger, on-demand.
 
 | Direction | Rate | Payload Size |
 |-----------|------|-------------|
-| PC → Board | On request | 0 bytes |
+| Host → Board | On request | 0 bytes |
 
-Payload 없음. 프레임 전송만으로 CONFIG_RESPONSE 응답을 트리거한다.
+No payload. The frame alone triggers a CONFIG_RESPONSE reply.
 
 ---
 
-### 4.8 CONFIG_RESPONSE (MSG_ID: 10201) - Phase 5
+### 4.8 CONFIG_RESPONSE (MSG_ID: 10201)
 
-설정 정보 응답. DC Charger → PC, CONFIG_REQUEST에 대한 응답.
+Configuration response. Charger → Host, in reply to CONFIG_REQUEST.
 
 | Direction | Rate | Payload Size |
 |-----------|------|-------------|
-| Board → PC | On request | 36 bytes |
+| Board → Host | On request | 36 bytes |
 
 #### Payload Structure
 
 ```
 Offset  Size    Type         Field             Description
 ──────────────────────────────────────────────────────────────────
-0       4       uint32_t     fw_version        FW 버전 (0x00XXYYZZ)
-4       4       uint32_t     hw_version        HW 버전
-8       16      char[16]     model_name        모델명 (null-terminated)
-24      12      char[12]     build_date        빌드 날짜 (YYYYMMDDHHMM)
+0       4       uint32_t     fw_version        FW version (0x00XXYYZZ)
+4       4       uint32_t     hw_version        HW version
+8       16      char[16]     model_name        Model name (null-terminated)
+24      12      char[12]     build_date        Build date (YYYYMMDDHHMM)
 ──────────────────────────────────────────────────────────────────
 Total: 36 bytes
 ```
@@ -469,29 +432,30 @@ Example: `0x00010203` → v1.2.3
 
 ### 4.9 Reserved Messages (TBD)
 
-아래 메시지는 펌웨어에 MSG ID만 선언되어 있으며, payload 구조는 미정의 상태이다.
-필요 시 추후 정의한다.
+Reserved MSG IDs declared in firmware without a defined payload yet:
 
 | MSG ID | Name | Direction | Description |
 |--------|------|-----------|-------------|
-| 10004 | ERROR_STATUS | Board → PC | 에러 상태 보고 |
-| 10202 | PARAM_SET | PC → Board | 파라미터 설정 |
-| 10203 | PARAM_GET | PC → Board | 파라미터 조회 |
+| 10004 | ERROR_STATUS | Board → Host | Error status report |
+| 10202 | PARAM_SET | Host → Board | Parameter set |
+| 10203 | PARAM_GET | Host → Board | Parameter get |
 
 ---
 
 ## 5. Message Summary
 
-| MSG ID | Name | Direction | Rate | Payload | CRC Extra | Status |
-|--------|------|-----------|------|---------|-----------|--------|
-| 0 | HEARTBEAT | Bidirectional | 1000 ms | 2 B | 142 | Implemented |
-| 10001 | CHARGER_STATUS | Board → PC | 500 ms | 16 B | 66 | Implemented |
-| 10002 | SENSOR_DATA | Board → PC | 1000 ms | 52 B | 120 | Implemented |
-| 10100 | CHARGER_COMMAND | PC → Board | On cmd | 3 B | 193 | Implemented |
-| 10102 | COMMAND_ACK | Board → PC | On ACK | 3 B | 222 | Implemented |
-| 10101 | MANUAL_CONTROL | PC → Board | On cmd | 6 B | 239 | Defined |
-| 10200 | CONFIG_REQUEST | PC → Board | On req | 0 B | 142 | Defined |
-| 10201 | CONFIG_RESPONSE | Board → PC | On req | 36 B | 128 | Defined |
+(There are no per-message CRC extra seeds in V2 Lite — the CRC is plain CRC-16/MODBUS over the payload bytes.)
+
+| MSG ID | Name | Direction | Rate | Payload | Status |
+|--------|------|-----------|------|---------|--------|
+| 0     | HEARTBEAT       | Bidirectional | 1000 ms | 2 B  | Implemented |
+| 10001 | CHARGER_STATUS  | Board → Host  | 500 ms  | 16 B | Implemented |
+| 10002 | SENSOR_DATA     | Board → Host  | 1000 ms | 52 B | Implemented |
+| 10100 | CHARGER_COMMAND | Host → Board  | On cmd  | 3 B  | Implemented |
+| 10102 | COMMAND_ACK     | Board → Host  | On ACK  | 3 B  | Implemented |
+| 10101 | MANUAL_CONTROL  | Host → Board  | On cmd  | 6 B  | Defined |
+| 10200 | CONFIG_REQUEST  | Host → Board  | On req  | 0 B  | Implemented |
+| 10201 | CONFIG_RESPONSE | Board → Host  | On req  | 36 B | Implemented |
 
 ---
 
@@ -500,37 +464,37 @@ Example: `0x00010203` → v1.2.3
 ### 6.1 Connection Establishment
 
 ```
-PC (SYSID=255)                           DC Charger (SYSID=1)
+App Tester (SYSID=201)                       DC Charger (SYSID=1, COMPID=model)
      |                                          |
-     |------- HEARTBEAT (1000ms) ----------------->|
+     |------- HEARTBEAT (1000 ms) ------------->|
      |                                          |
-     |<------- HEARTBEAT (1000ms) -----------------|
+     |<------ HEARTBEAT (1000 ms) --------------|
      |                                          |
      |  (Both sides receive HEARTBEAT)          |
      |  => Connection ESTABLISHED               |
-     |                                          |
+     |  => Host learns charger model from       |
+     |     the COMPID of the first HEARTBEAT    |
 ```
 
 ### 6.2 Normal Operation
 
 ```
-PC                                       DC Charger
+App Tester                                   DC Charger
      |                                          |
-     |<------ HEARTBEAT (1000ms) -----------------|
-     |<------ CHARGER_STATUS (500ms) ------------|
-     |<------ SENSOR_DATA (1000ms) ----------------|
+     |<------ HEARTBEAT (1000 ms) --------------|
+     |<------ CHARGER_STATUS (500 ms) ----------|
+     |<------ SENSOR_DATA (1000 ms) ------------|
      |                                          |
-     |------- HEARTBEAT (1000ms) ----------------->|
+     |------- HEARTBEAT (1000 ms) ------------->|
      |------- CHARGER_COMMAND (on demand) ----->|
-     |<------ COMMAND_ACK (response) ----------|
-     |------- MANUAL_CONTROL (on demand) ----->|
-     |                                          |
+     |<------ COMMAND_ACK (response) -----------|
+     |------- MANUAL_CONTROL (on demand) ------>|
 ```
 
 ### 6.3 Connection Loss Detection
 
 ```
-PC                                       DC Charger
+App Tester                                   DC Charger
      |                                          |
      |<------ HEARTBEAT -----------------------|
      |                                          |
@@ -539,58 +503,55 @@ PC                                       DC Charger
      |                                          |
      |  => Connection TIMEOUT                   |
      |  => State: DISCONNECTED                  |
-     |                                          |
 ```
 
 ---
 
 ## 7. Wire Format Examples
 
-### 7.1 PC HEARTBEAT Frame (Full Hex Dump)
+### 7.1 App Tester HEARTBEAT Frame (Full Hex Dump)
 
 ```
 Byte  Hex   Description
 ────────────────────────────────────
- 0    FD    STX (start marker)
+ 0    FC    STX (V2 Lite start marker)
  1    02    LEN (payload = 2 bytes)
- 2    00    IFLAGS
- 3    00    CFLAGS
- 4    00    SEQ (sequence = 0)
- 5    FF    SYSID (255 = PC)
- 6    00    COMPID (0 = main)
- 7    00    MSGID_L (0 = HEARTBEAT)
- 8    00    MSGID_M
- 9    00    MSGID_H
-10    03    system_status (3 = RUN)
-11    03    mavlink_version (3)
-12    19    CRC_L (0x6A19)
-13    6A    CRC_H
+ 2    00    SEQ (sequence = 0)
+ 3    C9    SYSID (201 = App Tester)
+ 4    00    COMPID (0 = ALL)
+ 5    00    MSGID_L (0 = HEARTBEAT)
+ 6    00    MSGID_M
+ 7    00    MSGID_H
+ 8    03    system_status (3 = RUN)
+ 9    03    mavlink_version (3)
+10    41    CRC_L (0x4141)   ← crc16_modbus([0x03, 0x03])
+11    41    CRC_H
 ────────────────────────────────────
-Total: 14 bytes
+Total: 12 bytes
 ```
 
-### 7.2 DC Charger HEARTBEAT Frame
+### 7.2 DC Charger (DURA) HEARTBEAT Frame
 
 ```
 Byte  Hex   Description
 ────────────────────────────────────
- 0    FD    STX
+ 0    FC    STX (V2 Lite)
  1    02    LEN (2)
- 2    00    IFLAGS
- 3    00    CFLAGS
- 4    00    SEQ (sequence = 0)
- 5    01    SYSID (1 = Charger)
- 6    00    COMPID (0)
- 7    00    MSGID_L (0 = HEARTBEAT)
- 8    00    MSGID_M
- 9    00    MSGID_H
-10    03    system_status (3 = RUN)
-11    03    mavlink_version (3)
-12    85    CRC_L (0xB985)
-13    B9    CRC_H
+ 2    00    SEQ (0)
+ 3    01    SYSID (1 = Charger)
+ 4    01    COMPID (1 = DURA)
+ 5    00    MSGID_L (0 = HEARTBEAT)
+ 6    00    MSGID_M
+ 7    00    MSGID_H
+ 8    03    system_status (3 = RUN)
+ 9    03    mavlink_version (3)
+10    41    CRC_L (0x4141)   ← same payload as §7.1 → same CRC
+11    41    CRC_H
 ────────────────────────────────────
-Total: 14 bytes
+Total: 12 bytes
 ```
+
+> Both frames above end in `41 41`. The CRC depends only on the 2-byte payload `[0x03, 0x03]`, which is identical for every HEARTBEAT carrying `(system_status=RUN, mavlink_version=3)` regardless of sender SYSID/COMPID/SEQ.
 
 ---
 
@@ -598,27 +559,42 @@ Total: 14 bytes
 
 ### 8.1 Parser State Machine
 
-수신 측은 byte-by-byte state machine으로 프레임을 파싱한다:
+The receiver parses byte-by-byte:
 
 ```
-IDLE → GOT_STX → GOT_LEN → GOT_IFLAGS → GOT_CFLAGS → GOT_SEQ
-  → GOT_SYSID → GOT_COMPID → GOT_MSGID1 → GOT_MSGID2 → GOT_MSGID3
+IDLE → GOT_STX → GOT_LEN → GOT_SEQ → GOT_SYSID → GOT_COMPID
+  → GOT_MSGID1 → GOT_MSGID2 → GOT_MSGID3
   → GOT_PAYLOAD (LEN bytes) → GOT_CRC1 → (CRC verify) → Message Complete
 ```
 
-- STX(0xFD) 이외의 바이트가 IDLE 상태에서 수신되면 무시
-- CRC 불일치 시 해당 프레임 폐기 후 IDLE로 복귀
-- 알 수 없는 MSGID는 CRC Extra = 0으로 처리
+- Bytes other than STX (`0xFC`) in IDLE are ignored.
+- A second STX received in any header state triggers resync (start a new frame at the new STX).
+- On CRC mismatch (payload bytes corrupted) the frame is dropped and the parser returns to IDLE.
+- The header is **not** CRC-protected. A flipped bit in SEQ/SYSID/COMPID/MSGID will still pass CRC validation. If your application is sensitive to these fields, validate them at the message-handler layer.
+- Unknown MSGID is delivered to the application like any other; the parser does not require a per-message seed table.
 
 ### 8.2 Sequence Number
 
-- 각 송신자는 독립적으로 0~255 순환하는 SEQ를 관리
-- SEQ 불연속은 패킷 손실을 의미하지만 프레임 자체는 유효
+- Each sender maintains its own SEQ, wrapping 0–255.
+- SEQ gaps indicate packet loss but do not invalidate individual frames.
+- One sender's SEQ counter is shared across **all** outgoing message types, so the SEQ visible on a periodic message stream may jump when other messages are interleaved.
 
 ### 8.3 Endianness
 
-- 모든 multi-byte 필드: **Little-Endian**
-- float: IEEE 754 single-precision, Little-Endian
+- All multi-byte fields: **Little-Endian**.
+- `float`: IEEE-754 single-precision, Little-Endian.
+
+### 8.4 Migration Note: Upstream MAVLink V2 → V2 Lite
+
+If you previously implemented upstream MAVLink V2 (STX `0xFD`, 9-byte header, CRC-16/CCITT-FALSE + per-message extra seed):
+
+1. **STX**: `0xFD` → `0xFC`.
+2. **Header**: drop INCOMPAT_FLAGS / COMPAT_FLAGS (the two bytes after LEN). All subsequent header field offsets shift by **−2**.
+3. **CRC algorithm**: replace CRC-16/CCITT-FALSE with **CRC-16/MODBUS** (poly 0x8005 reflected, init 0xFFFF, reflect in/out, no XOR-out).
+4. **CRC range**: now **payload only** — drop header coverage. Drop the per-message `crc_extra` table and the fold-in step. `crc16_modbus(payload, payload_len)` is the only CRC call you need.
+5. **CRC wire encoding**: still 2 bytes, little-endian (unchanged).
+
+Payload structs, MSG ID values, transmission rates, and the absence of an ETX byte are unchanged.
 
 ---
 
@@ -626,11 +602,12 @@ IDLE → GOT_STX → GOT_LEN → GOT_IFLAGS → GOT_CFLAGS → GOT_SEQ
 
 | Condition | Action |
 |-----------|--------|
-| STX != 0xFD | 바이트 무시, IDLE 유지 |
-| Payload length > 255 | 프레임 폐기, IDLE 복귀 |
-| CRC mismatch | 프레임 폐기, crcErrorCount++ |
-| Unknown MSG ID | 프레임 수신 가능 (CRC Extra = 0) |
-| Heartbeat timeout (>3s) | 연결 끊김 판정 |
+| STX != 0xFC | Byte ignored, IDLE retained |
+| Payload length > 255 | Frame dropped, return to IDLE |
+| Payload CRC mismatch | Frame dropped, `crcErrorCount++` |
+| Header byte corruption | Not detected by CRC (header outside CRC range) — validate at message handler |
+| Unknown MSG ID | Frame accepted; application decides |
+| Heartbeat timeout (>3s) | Connection lost |
 
 ---
 
@@ -641,6 +618,5 @@ IDLE → GOT_STX → GOT_LEN → GOT_IFLAGS → GOT_CFLAGS → GOT_SEQ
 | Firmware encoder/decoder | C | `drivers/serial_link/serial_link_protocol.c` |
 | Firmware message definitions | C | `drivers/_include/serial_link_protocol.h` |
 | Firmware CRC | C | `header/lib/crc.h` |
-| PC Protocol layer | TypeScript | `electron/protocol/` (parser, encoder, crc16) |
-| PC Serial layer | TypeScript | `electron/serial/` (SerialPortManager, HeartbeatManager) |
-| Python test tool | Python | `test/test_mavlink_protocol.py` |
+| PC protocol layer | TypeScript | `electron/protocol/` (parser, encoder, crc16) |
+| PC serial layer | TypeScript | `electron/serial/` (SerialPortManager, HeartbeatManager) |

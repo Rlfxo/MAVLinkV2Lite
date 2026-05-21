@@ -1,5 +1,17 @@
 # MAVLink V2 Lite PC Application Specification
 
+> ⚠️ **Legacy spec — superseded by [`PROTOCOL.md`](../PROTOCOL.md) (Version 2.1, 2026-05-21)**
+>
+> This document is the original feature/UI specification from project kickoff. The wire-format and message sections below describe an early MAVLink-V2-compatible draft (STX `0xFD`, 9-byte header, CRC-16/CCITT-FALSE + per-msg seed) and predate the V2 Lite dialect change.
+>
+> **Current authoritative spec** (see [`PROTOCOL.md`](../PROTOCOL.md)):
+> - STX `0xFC`, 7-byte header (no INCOMPAT/COMPAT flags)
+> - CRC-16/MODBUS over payload bytes only (no header coverage, no per-message extra seed)
+> - SYSID: Charger=1 / PC Android=100 / PC Windows=101 / JIG=200 / **AppTester=201** / Broadcast=255
+> - COMPID: ALL=0 / DURA=1 / MOOEV=2 / Parky=3
+>
+> The non-protocol sections (hardware connection, UX requirements, etc.) below are still useful background context.
+
 ## 1. Overview
 
 DC Charger와 PC 간 통신을 위한 MAVLink V2 Lite 기반 모니터링 및 제어 애플리케이션
