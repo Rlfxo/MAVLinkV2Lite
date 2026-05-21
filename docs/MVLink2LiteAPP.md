@@ -1,6 +1,6 @@
 # MAVLink V2 Lite PC Application Specification
 
-> ⚠️ **Legacy spec — superseded by [`PROTOCOL.md`](../PROTOCOL.md) (Version 2.1, 2026-05-21)**
+> ⚠️ **Legacy spec — superseded by [`PROTOCOL.md`](../PROTOCOL.md) (Version 2.2, 2026-05-21)**
 >
 > This document is the original feature/UI specification from project kickoff. The wire-format and message sections below describe an early MAVLink-V2-compatible draft (STX `0xFD`, 9-byte header, CRC-16/CCITT-FALSE + per-msg seed) and predate the V2 Lite dialect change.
 >
@@ -9,6 +9,9 @@
 > - CRC-16/MODBUS over payload bytes only (no header coverage, no per-message extra seed)
 > - SYSID: Charger=1 / PC Android=100 / PC Windows=101 / JIG=200 / **AppTester=201** / Broadcast=255
 > - COMPID: ALL=0 / DURA=1 / MOOEV=2 / Parky=3
+> - `fixed_t` (int32 value + int8 exp, 5 B) for all physical quantities in SENSOR_DATA / METER_DATA
+> - New METER_DATA (10003, 50 B, 2 Hz); CHARGER_STATUS slimmed to 10 B; SENSOR_DATA redesigned to 53 B (no meter fields)
+> - `uuid` (u32) on CHARGER_COMMAND / COMMAND_ACK / CONFIG_REQUEST / CONFIG_RESPONSE for de-dupe + safe retransmit
 >
 > The non-protocol sections (hardware connection, UX requirements, etc.) below are still useful background context.
 

@@ -1,10 +1,18 @@
 # MAVLink V2 Lite Protocol Specification
 
-DC Charger ↔ Host (PC Android / PC Windows / JIG / App Tester) UART serial protocol specification.
+DC Charger ↔ Host (PC Android / PC Windows / JIG / App Tester) UART serial protocol specification. This document tracks the firmware-side authoritative spec at `evar-dc-charger/docs/protocol/mavlink_protocol.md`.
 
-**Version**: 2.1
+**Version**: 2.2
 **Date**: 2026-05-21
-**Status**: V2 Lite dialect (header 8 bytes, STX 0xFC). **CRC switched to CRC-16/MODBUS over payload only** (no header coverage, no per-message extra seed). EVCC (20xxx) message family removed.
+**Status**: V2 Lite dialect (header 8 B, STX 0xFC). CRC-16/MODBUS over payload only.
+
+**Highlights of 2.2 vs 2.1**:
+- `fixed_t` (int32 value + int8 exp, 5 B) introduced for all physical quantities (V/A/W/Wh/°C/%/m·s⁻²/°·s⁻¹). Real value = `value × 10^exp`, SI base units.
+- `CHARGER_STATUS` slimmed 16 B → **10 B** (state + relay_bitmap + uptime_sec + storage_soc). Rate 500 ms → **100 ms** (10 Hz).
+- New `METER_DATA` (10003, 50 B, 2 Hz) — SPM90 meter1/meter2 V/I/P/E + firmware-summed total_power/total_energy.
+- `SENSOR_DATA` redesigned to 53 B with all fixed_t; meter fields removed (moved to METER_DATA).
+- `uuid` (u32) added to CHARGER_COMMAND / COMMAND_ACK / CONFIG_REQUEST / CONFIG_RESPONSE. PC assigns monotonic uuid per request, firmware echoes it. `COMMAND_ACK.target_msg_id` removed (uuid replaces it).
+- `MAV_STATE` extended: 6 = FW_OTA, 7 = PLC_OTA.
 
 ---
 
@@ -170,7 +178,24 @@ To validate implementations:
 
 ## 4. Message Definitions
 
-### 4.1 HEARTBEAT (MSG_ID: 0)
+### 4.0 fixed_t — wire format for physical quantities
+
+SENSOR_DATA and METER_DATA fields are encoded as `fixed_t`:
+
+```
+Offset  Size  Type   Field
+───────────────────────────
+0       4     i32 LE value
+4       1     i8     exp
+───────────────────────────
+Total: 5 bytes
+```
+
+The physical value (in SI base unit) is `value × 10^exp`. The encoder writes peripheral raw values + a constant `exp` per field, so PCs can decode without knowing the peripheral. `(value=0, exp=0)` is the conventional "not measured / not present" sentinel.
+
+---
+
+### 4.1 HEARTBEAT (MSG_ID: 0) — 2 B
 
 Liveness keep-alive. Bidirectional, 1000 ms. Each side transmits independently; no acknowledgement is expected.
 
@@ -181,24 +206,13 @@ Liveness keep-alive. Bidirectional, 1000 ms. Each side transmits independently; 
 #### Payload Structure
 
 ```
-Offset  Size    Type        Field             Description
-───────────────────────────────────────────────────────────────
-0       1       uint8_t     system_status     MAV_STATE
-1       1       uint8_t     mavlink_version   Protocol version (always 3)
-───────────────────────────────────────────────────────────────
+Offset  Size  Type   Field             Description
+───────────────────────────────────────────────────────
+0       1     uint8  system_status     MAV_STATE (§4.10.1)
+1       1     uint8  mavlink_version   Protocol version (always 3)
+───────────────────────────────────────────────────────
 Total: 2 bytes
 ```
-
-#### MAV_STATE Values
-
-| Value | Name | Description |
-|-------|------|-------------|
-| 0 | UNINIT | Not initialized |
-| 1 | BOOT | Booting |
-| 2 | STANDBY | Idle |
-| 3 | RUN | Normal operation |
-| 4 | ERROR | Error |
-| 5 | SHUTDOWN | RUN → STANDBY transition (shutdown sequence) |
 
 #### Connection Monitoring
 
@@ -207,157 +221,180 @@ Total: 2 bytes
 
 ---
 
-### 4.2 CHARGER_STATUS (MSG_ID: 10001)
+### 4.2 CHARGER_STATUS (MSG_ID: 10001) — 10 B, 10 Hz
 
-Charger operational state. Charger → Host, 500 ms.
-Discharge / recharge state, BMS info, relay bitmap, diagnostics.
-Real-time electrical measurements (voltage, current) are carried in SENSOR_DATA (10002).
+Slim "control-critical" snapshot: state + relay topology + uptime + storage SOC. All peripheral measurements live in METER_DATA (V/I/P/E) and SENSOR_DATA (environment/IMU/DCGF/IMD).
 
 | Direction | Rate | Payload Size |
 |-----------|------|-------------|
-| Board → Host | 500 ms | 16 bytes |
+| Board → Host | 100 ms | 10 bytes |
 
 #### Payload Structure
 
 ```
-Offset  Size    Type        Field           Description              Unit
-──────────────────────────────────────────────────────────────────────────
-0       1       uint8_t     discharging     Discharge state           0=off, 1~255
-1       1       uint8_t     recharging      Recharge state            0=off, 1~255
-2       1       uint8_t     bms_vendor      BMS vendor                enum
-3       2       uint16_t    bms_cap         BMS capacity              kWh
-5       1       uint8_t     out_cap         Output converter max cap. kW
-6       1       uint8_t     bms_soc         SOC                       %
-7       1       uint8_t     diagnosis       Diagnosis flags           bitmask
-8       4       uint32_t    relay_bitmap    Relay bitmap              bitmask
-12      4       uint32_t    uptime_sec      System uptime             sec
-──────────────────────────────────────────────────────────────────────────
-Total: 16 bytes
+Offset  Size    Type        Field           Description
+─────────────────────────────────────────────────────────────────────
+0       1       uint8       state           MAV_STATE (§4.10.1)
+1       4       uint32 LE   relay_bitmap    bit 0..15=RY1..RY16, bit 16=MC
+5       4       uint32 LE   uptime_sec      Charger uptime (s)
+9       1       uint8       storage_soc     0..100 % (battery models). DURA: 0 = N/A
+─────────────────────────────────────────────────────────────────────
+Total: 10 bytes
 ```
 
 #### relay_bitmap Bit Assignments
 
-| Bit | Relay | Description |
-|-----|-------|-------------|
-| 0 | RY1 | Relay 1 |
-| 1 | RY2 | Relay 2 |
-| ... | ... | ... |
-| 15 | RY16 | Relay 16 |
-| 16 | MC | Main Contactor |
+| Bit | Relay |
+|-----|-------|
+| 0–15 | RY1..RY16 |
+| 16 | Main Contactor (MC) |
 
 ---
 
-### 4.3 SENSOR_DATA (MSG_ID: 10002)
+### 4.3 SENSOR_DATA (MSG_ID: 10002) — 53 B, 2 Hz
 
-Sensor readings. Charger → Host, 1000 ms.
-Environment (temp/humidity), IMU (accel/gyro), DCGF, power meter, IMD.
+Environment + IMU + DCGF + IMD. Physical quantities are `fixed_t` (5 B each) in SI base units. Default peripheral exponents:
+
+| Source | Quantity | exp |
+|--------|----------|-----|
+| SHT3X | temperature (°C), humidity (%) | −2 |
+| LSM6DSO32 | accel (m/s²), gyro (°/s) | −3 |
+| DCGF | voltage (V) | −1 |
 
 | Direction | Rate | Payload Size |
 |-----------|------|-------------|
-| Board → Host | 1000 ms | 52 bytes |
+| Board → Host | 500 ms | 53 bytes |
 
 #### Payload Structure
 
 ```
-Offset  Size    Type        Field             Description              Unit
-──────────────────────────────────────────────────────────────────────────────
-0       4       float       temperature_C     Temperature              degC
-4       4       float       humidity_pct      Humidity                 %
-8       4       float       accel_x_mps2      Accel X                  m/s^2
-12      4       float       accel_y_mps2      Accel Y                  m/s^2
-16      4       float       accel_z_mps2      Accel Z                  m/s^2
-20      4       float       gyro_x_dps        Gyro X                   deg/s
-24      4       float       gyro_y_dps        Gyro Y                   deg/s
-28      4       float       gyro_z_dps        Gyro Z                   deg/s
-32      2       uint16_t    dcgf_fault        DCGF fault code
-34      2       uint16_t    dcgf_volt1        DCGF voltage 1           mV
-36      2       uint16_t    dcgf_volt2        DCGF voltage 2           mV
-38      4       uint32_t    meter_voltage     Power-meter voltage      mV
-42      4       uint32_t    meter_current     Power-meter current      mA
-46      4       uint32_t    meter_energy      Power-meter energy       Wh
-50      1       uint8_t     imd_stop_mode     IMD stop mode
-51      1       uint8_t     reserved          Reserved (alignment)
-──────────────────────────────────────────────────────────────────────────────
-Total: 52 bytes
+Offset  Size  Type       Field                    Notes
+─────────────────────────────────────────────────────────────────────
+0       5     fixed_t    temperature              °C
+5       5     fixed_t    humidity                 %
+10      5     fixed_t    accel_x                  m/s²
+15      5     fixed_t    accel_y
+20      5     fixed_t    accel_z
+25      5     fixed_t    gyro_x                   °/s
+30      5     fixed_t    gyro_y
+35      5     fixed_t    gyro_z
+40      2     uint16 LE  dcgf_fault               DCGF fault bitmask
+42      5     fixed_t    dcgf_volt1               V
+47      5     fixed_t    dcgf_volt2               V
+52      1     uint8      imd_stop_mode            MOOEV only; DURA: 0
+─────────────────────────────────────────────────────────────────────
+Total: 53 bytes
 ```
+
+Power-meter readings used to live here — moved to METER_DATA (§4.4).
 
 ---
 
-### 4.4 CHARGER_COMMAND (MSG_ID: 10100)
+### 4.4 METER_DATA (MSG_ID: 10003) — 50 B, 2 Hz
 
-Charger control command. Host → Charger, on-demand.
-Charger responds with COMMAND_ACK (10102).
+SPM90 meter measurements. `total_*` are firmware-summed (intra-frame consistency between meter1 and meter2). DURA exposes both meters; MOOEV has no meter2 and reports it as `(value=0, exp=0)`.
+
+**SPM90 native exponents** (encoder uses these as-is):
+
+| Quantity | exp | LSB |
+|----------|-----|-----|
+| voltage | −1 | 100 mV |
+| current | −2 | 10 mA |
+| power   |  0 | 1 W |
+| energy  | +1 | 10 Wh |
+
+**Sign convention**: positive `current`/`power` = charger → external (charging); negative = V2G / external → charger (reverse).
 
 | Direction | Rate | Payload Size |
 |-----------|------|-------------|
-| Host → Board | On command | 3 bytes |
+| Board → Host | 500 ms | 50 bytes |
 
 #### Payload Structure
 
 ```
-Offset  Size    Type        Field             Description              Unit
-──────────────────────────────────────────────────────────────────────────────
-0       2       uint16_t    max_power_kw      Max power                kW
-2       1       uint8_t     command           Command type
-──────────────────────────────────────────────────────────────────────────────
-Total: 3 bytes
+Offset  Size  Type     Field
+─────────────────────────────────────────────
+0       5     fixed_t  total_power      (W)
+5       5     fixed_t  total_energy     (Wh)
+10      5     fixed_t  meter1_voltage   (V)
+15      5     fixed_t  meter1_current   (A)
+20      5     fixed_t  meter1_power     (W)
+25      5     fixed_t  meter1_energy    (Wh)
+30      5     fixed_t  meter2_voltage   (DURA only; MOOEV: (0,0))
+35      5     fixed_t  meter2_current
+40      5     fixed_t  meter2_power
+45      5     fixed_t  meter2_energy
+─────────────────────────────────────────────
+Total: 50 bytes
 ```
 
-#### command Values
-
-| Value | Name | Description |
-|-------|------|-------------|
-| 0 | STOP | Stop |
-| 1 | DISCHARGE | Discharge (vehicle charging) |
-| 2 | RECHARGE | ESS recharge |
+`(value=0, exp=0)` is the sentinel for "not measured / not present". PC distinguishes DURA vs MOOEV by frame COMPID and treats meter2 accordingly. For MOOEV, `total_*` equals `meter1_*`.
 
 ---
 
-### 4.5 COMMAND_ACK (MSG_ID: 10102)
+### 4.5 CHARGER_COMMAND (MSG_ID: 10100) — 7 B
 
-Command acknowledgement. Charger → Host. Issued in response to CHARGER_COMMAND (10100).
+Charger control command. Host → Charger, on-demand. The charger responds with COMMAND_ACK (10102) echoing the same `uuid`.
+
+The `uuid` is a PC-assigned 32-bit id per command instance (monotonic counter is fine — does not need to be cryptographic). Firmware caches recent uuids and **re-sends the prior ACK without re-executing** on a duplicate uuid, so retrying a lost ACK is safe.
 
 | Direction | Rate | Payload Size |
 |-----------|------|-------------|
-| Board → Host | On ACK | 3 bytes |
+| Host → Board | On command | 7 bytes |
 
 #### Payload Structure
 
 ```
-Offset  Size    Type        Field             Description
-──────────────────────────────────────────────────────────────────
-0       2       uint16_t    target_msg_id     ACK target MSG_ID
-2       1       uint8_t     result            Processing result
-──────────────────────────────────────────────────────────────────
-Total: 3 bytes
+Offset  Size  Type       Field          Description
+─────────────────────────────────────────────────────────────────────
+0       4     uint32 LE  uuid           PC-assigned command instance id
+4       2     uint16 LE  max_power_kW   Max power (kW)
+6       1     uint8      command        CHARGER_CMD (§4.10.2)
+─────────────────────────────────────────────────────────────────────
+Total: 7 bytes
 ```
 
-#### result Values
+---
 
-| Value | Name | Description |
-|-------|------|-------------|
-| 0 | ACCEPTED | Accepted, executing |
-| 1 | DENIED | Rejected (not allowed in current state) |
-| 2 | ERROR | Processing error |
-| 3 | UNSUPPORTED | Command not supported |
+### 4.6 COMMAND_ACK (MSG_ID: 10102) — 5 B
+
+Acknowledgement of CHARGER_COMMAND. The legacy `target_msg_id` field is gone — `uuid` (echoed from the request) is the sole correlation key.
+
+| Direction | Rate | Payload Size |
+|-----------|------|-------------|
+| Board → Host | On ACK | 5 bytes |
+
+#### Payload Structure
+
+```
+Offset  Size  Type       Field    Description
+──────────────────────────────────────────────────────────────
+0       4     uint32 LE  uuid     Echoed from CHARGER_COMMAND.uuid
+4       1     uint8      result   CMD_ACK (§4.10.3)
+──────────────────────────────────────────────────────────────
+Total: 5 bytes
+```
 
 #### Sequence Diagram
 
 ```
-App Tester (SYSID=201, COMPID=0)             DC Charger (SYSID=1, COMPID=DURA/MOOEV/Parky)
+App Tester (SYSID=201, COMPID=0)         DC Charger (SYSID=1, COMPID=DURA/MOOEV/Parky)
      |                                          |
      |--- CHARGER_COMMAND (10100) ------------>|
-     |    max_power_kw=150, command=1           |
+     |    uuid=A001, max_power_kW=150, cmd=1   |
      |                                          |  (process)
      |<-- COMMAND_ACK (10102) -----------------|
-     |    target_msg_id=10100, result=0         |
-     |    (ACCEPTED)                            |
+     |    uuid=A001, result=ACCEPTED            |
      |                                          |
+     |  (later: ACK retransmit on PC retry)    |
+     |--- CHARGER_COMMAND (10100, uuid=A001) ->|
+     |                                          |  (de-dupe; re-send ACK only)
+     |<-- COMMAND_ACK (10102, uuid=A001) ------|
 ```
 
 ---
 
-### 4.6 MANUAL_CONTROL (MSG_ID: 10101) — Defined
+### 4.7 MANUAL_CONTROL (MSG_ID: 10101) — Defined
 
 JIG / test forced control. Host → Charger, on-demand. While manual mode is on, the board overrides its autonomous logic and applies the relay bitmap and force command directly.
 
@@ -389,48 +426,102 @@ Total: 6 bytes
 
 ---
 
-### 4.7 CONFIG_REQUEST (MSG_ID: 10200)
+### 4.8 CONFIG_REQUEST (MSG_ID: 10200) — 4 B
 
-Request configuration. Host → Charger, on-demand.
+Request configuration. Host → Charger, on-demand. Firmware replies with CONFIG_RESPONSE echoing the same `uuid`.
 
 | Direction | Rate | Payload Size |
 |-----------|------|-------------|
-| Host → Board | On request | 0 bytes |
+| Host → Board | On request | 4 bytes |
 
-No payload. The frame alone triggers a CONFIG_RESPONSE reply.
+#### Payload Structure
+
+```
+Offset  Size  Type       Field   Description
+──────────────────────────────────────────────────────────
+0       4     uint32 LE  uuid    PC-assigned request instance id
+──────────────────────────────────────────────────────────
+Total: 4 bytes
+```
 
 ---
 
-### 4.8 CONFIG_RESPONSE (MSG_ID: 10201)
+### 4.9 CONFIG_RESPONSE (MSG_ID: 10201) — 40 B
 
 Configuration response. Charger → Host, in reply to CONFIG_REQUEST.
 
 | Direction | Rate | Payload Size |
 |-----------|------|-------------|
-| Board → Host | On request | 36 bytes |
+| Board → Host | On request | 40 bytes |
 
 #### Payload Structure
 
 ```
-Offset  Size    Type         Field             Description
-──────────────────────────────────────────────────────────────────
-0       4       uint32_t     fw_version        FW version (0x00XXYYZZ)
-4       4       uint32_t     hw_version        HW version
-8       16      char[16]     model_name        Model name (null-terminated)
-24      12      char[12]     build_date        Build date (YYYYMMDDHHMM)
-──────────────────────────────────────────────────────────────────
-Total: 36 bytes
+Offset  Size  Type       Field         Description
+─────────────────────────────────────────────────────────────────────
+0       4     uint32 LE  uuid          Echoed from CONFIG_REQUEST.uuid
+4       4     uint32 LE  fw_version    0x00 MAJOR MINOR PATCH
+8       4     uint32 LE  hw_version    HW revision word
+12      16    char[16]   model_name    NUL-terminated (e.g. "DURASLIM")
+28      12    char[12]   build_date    "YYYYMMDDHHMM" (12 ASCII)
+─────────────────────────────────────────────────────────────────────
+Total: 40 bytes
 ```
 
 #### Version Format
 
-`fw_version = 0x00XXYYZZ` → Major.Minor.Patch = `XX.YY.ZZ`
-
-Example: `0x00010203` → v1.2.3
+`fw_version = 0x00 MAJOR MINOR PATCH` → `MAJOR.MINOR.PATCH`. Example: `0x00010203` → v1.2.3.
 
 ---
 
-### 4.9 Reserved Messages (TBD)
+### 4.10 Enumerations
+
+#### 4.10.1 MAV_STATE (HEARTBEAT.system_status, CHARGER_STATUS.state)
+
+| Value | Name | Description |
+|-------|------|-------------|
+| 0 | UNINIT | Pre-init; rarely seen in normal operation |
+| 1 | BOOT | Powered, peripherals coming up |
+| 2 | STANDBY | Init complete; ready to accept commands |
+| 3 | RUN | Executing a charge / discharge command |
+| 4 | ERROR | Peripheral or situational error; operation halted |
+| 5 | SHUTDOWN | Intentional / emergency stop |
+| 6 | FW_OTA | MCU firmware OTA in progress; commands rejected |
+| 7 | PLC_OTA | PLC modem firmware OTA in progress; commands rejected |
+
+Typical transitions:
+
+```
+UNINIT → BOOT → STANDBY ⇌ RUN
+                 ↓ ↑       ↓ ↑
+                 ERROR ────┘
+                 ↓
+                 SHUTDOWN
+
+FW_OTA / PLC_OTA can be entered only from STANDBY (rejected during RUN).
+At most one OTA may be active. On completion the board reboots → BOOT.
+```
+
+#### 4.10.2 CHARGER_CMD (CHARGER_COMMAND.command)
+
+| Value | Name |
+|-------|------|
+| 0 | STOP |
+| 1 | DISCHARGE |
+| 2 | RECHARGE |
+
+#### 4.10.3 CMD_ACK (COMMAND_ACK.result)
+
+| Value | Name |
+|-------|------|
+| 0 | ACCEPTED |
+| 1 | DENIED |
+| 2 | ERROR |
+| 3 | UNSUPPORTED |
+
+---
+
+### 4.11 Reserved Messages (TBD)
 
 Reserved MSG IDs declared in firmware without a defined payload yet:
 
@@ -444,18 +535,19 @@ Reserved MSG IDs declared in firmware without a defined payload yet:
 
 ## 5. Message Summary
 
-(There are no per-message CRC extra seeds in V2 Lite — the CRC is plain CRC-16/MODBUS over the payload bytes.)
+(No per-message CRC extra seeds in V2 Lite — CRC is plain CRC-16/MODBUS over the payload bytes.)
 
 | MSG ID | Name | Direction | Rate | Payload | Status |
 |--------|------|-----------|------|---------|--------|
 | 0     | HEARTBEAT       | Bidirectional | 1000 ms | 2 B  | Implemented |
-| 10001 | CHARGER_STATUS  | Board → Host  | 500 ms  | 16 B | Implemented |
-| 10002 | SENSOR_DATA     | Board → Host  | 1000 ms | 52 B | Implemented |
-| 10100 | CHARGER_COMMAND | Host → Board  | On cmd  | 3 B  | Implemented |
-| 10102 | COMMAND_ACK     | Board → Host  | On ACK  | 3 B  | Implemented |
+| 10001 | CHARGER_STATUS  | Board → Host  | 100 ms  | 10 B | Implemented |
+| 10002 | SENSOR_DATA     | Board → Host  | 500 ms  | 53 B | Implemented |
+| 10003 | METER_DATA      | Board → Host  | 500 ms  | 50 B | Implemented |
+| 10100 | CHARGER_COMMAND | Host → Board  | On cmd  | 7 B  | Implemented |
+| 10102 | COMMAND_ACK     | Board → Host  | On ACK  | 5 B  | Implemented |
 | 10101 | MANUAL_CONTROL  | Host → Board  | On cmd  | 6 B  | Defined |
-| 10200 | CONFIG_REQUEST  | Host → Board  | On req  | 0 B  | Implemented |
-| 10201 | CONFIG_RESPONSE | Board → Host  | On req  | 36 B | Implemented |
+| 10200 | CONFIG_REQUEST  | Host → Board  | On req  | 4 B  | Implemented |
+| 10201 | CONFIG_RESPONSE | Board → Host  | On req  | 40 B | Implemented |
 
 ---
 
@@ -584,7 +676,9 @@ IDLE → GOT_STX → GOT_LEN → GOT_SEQ → GOT_SYSID → GOT_COMPID
 - All multi-byte fields: **Little-Endian**.
 - `float`: IEEE-754 single-precision, Little-Endian.
 
-### 8.4 Migration Note: Upstream MAVLink V2 → V2 Lite
+### 8.4 Migration Notes
+
+#### From upstream MAVLink V2 → V2 Lite (header + CRC change)
 
 If you previously implemented upstream MAVLink V2 (STX `0xFD`, 9-byte header, CRC-16/CCITT-FALSE + per-message extra seed):
 
@@ -594,7 +688,18 @@ If you previously implemented upstream MAVLink V2 (STX `0xFD`, 9-byte header, CR
 4. **CRC range**: now **payload only** — drop header coverage. Drop the per-message `crc_extra` table and the fold-in step. `crc16_modbus(payload, payload_len)` is the only CRC call you need.
 5. **CRC wire encoding**: still 2 bytes, little-endian (unchanged).
 
-Payload structs, MSG ID values, transmission rates, and the absence of an ETX byte are unchanged.
+#### From V2 Lite 2.1 → 2.2 (payload restructure)
+
+If you implemented the prior V2 Lite (per-message structs with raw scalar fields):
+
+1. **`fixed_t` type**: replace your float / scaled-integer scalars in SENSOR_DATA and METER_DATA with `{int32 value, int8 exp}` (5 B). `actual = value × 10^exp` (SI base units).
+2. **`CHARGER_STATUS`**: was 16 B, now **10 B**. Drop `discharging`/`recharging`/`bms_vendor`/`bms_cap`/`out_cap`/`bms_soc`/`diagnosis`. Keep `state`/`relay_bitmap`/`uptime_sec`/`storage_soc`. Rate increased to 100 ms (10 Hz).
+3. **`SENSOR_DATA`**: was 52 B, now **53 B**. All physical fields are now `fixed_t`. Remove `meter_voltage`/`meter_current`/`meter_energy` (moved to METER_DATA).
+4. **`METER_DATA` (NEW, 50 B)**: subscribe to MSGID 10003 for SPM90 V/I/P/E (meter1 + meter2 + totals).
+5. **`uuid` (u32)**: added at the start of CHARGER_COMMAND (3→7 B), COMMAND_ACK (3→5 B, `target_msg_id` removed), CONFIG_REQUEST (0→4 B), CONFIG_RESPONSE (36→40 B). PC assigns monotonic uuid per request; firmware echoes it for de-dupe and retransmit safety.
+6. **`MAV_STATE`**: 6 = FW_OTA, 7 = PLC_OTA added.
+
+Frame format (STX, header layout, CRC algorithm/range) is **unchanged** between 2.1 and 2.2.
 
 ---
 

@@ -8,28 +8,36 @@ DC Charger ↔ Host(App Tester / PC Android / PC Windows / JIG) UART 통신을 �
 
 ---
 
-## 현재 상태 (2026-05-21)
+## 현재 상태 (2026-05-21, spec v2.2)
 
-- ✅ V2 Lite dialect 마이그레이션 완료 (STX 0xFD→0xFC, 헤더 9B→7B, INCOMPAT/COMPAT 제거)
-- ✅ CRC 알고리즘 교체: CRC-16/CCITT-FALSE + per-msg extra seed → **CRC-16/MODBUS over payload only**
-- ✅ 새 SYSID 컨벤션: Charger=1, PC Android=100, PC Windows=101, JIG=200, **AppTester=201** (이 앱), Broadcast=255
-- ✅ 새 COMPID 컨벤션: ALL=0, DURA=1, MOOEV=2, Parky=3 (모델 식별)
-- ✅ EVCC(20xxx) 메시지군 폐지
+- ✅ V2 Lite dialect 적용 (STX 0xFC, 헤더 8B, INCOMPAT/COMPAT 제거)
+- ✅ CRC-16/MODBUS over payload only (per-msg seed 폐지)
+- ✅ SYSID: Charger=1, PC Android=100, PC Windows=101, JIG=200, **AppTester=201** (이 앱), Broadcast=255
+- ✅ COMPID: ALL=0, DURA=1, MOOEV=2, Parky=3 (모델 식별)
+- ✅ **fixed_t** (int32 value + int8 exp, 5B) — SENSOR_DATA / METER_DATA 모든 물리량
+- ✅ CHARGER_STATUS 슬림화 16B→10B (state/relay/uptime/storage_soc만)
+- ✅ **METER_DATA (10003, 50B, 2Hz) 신규** — SPM90 meter1/meter2 V/I/P/E + 합산 total
+- ✅ SENSOR_DATA 재설계 (53B, all fixed_t, meter 필드 제거)
+- ✅ **uuid (u32)** — CHARGER_COMMAND / COMMAND_ACK / CONFIG_REQUEST / CONFIG_RESPONSE 모두 매 요청 단조 증가 카운터로 PC가 부여, FW가 echo. ACK 분실 시 재전송 안전
+- ✅ MAV_STATE: 6=FW_OTA, 7=PLC_OTA 추가
+- ✅ EVCC(20xxx) 폐지
 - ✅ 모델 기반 탭 UI: **DURA 활성**, MOOEV/Parky 탭은 비활성(placeholder)
-- ✅ 127개 protocol 테스트 통과 (`vitest run`)
+- ✅ MeterDataPanel 신규 UI 추가
+- ✅ 141개 protocol 테스트 통과 (`vitest run`)
 
 ### 구현된 메시지
 
-| MSG ID | Name | Direction | Rate | Status |
-|--------|------|-----------|------|--------|
-| 0     | HEARTBEAT       | Bidirectional | 1000 ms | ✅ |
-| 10001 | CHARGER_STATUS  | Board → Host  | 500 ms  | ✅ |
-| 10002 | SENSOR_DATA     | Board → Host  | 1000 ms | ✅ |
-| 10100 | CHARGER_COMMAND | Host → Board  | On cmd  | ✅ |
-| 10102 | COMMAND_ACK     | Board → Host  | On ACK  | ✅ |
-| 10200 | CONFIG_REQUEST  | Host → Board  | On req  | ✅ |
-| 10201 | CONFIG_RESPONSE | Board → Host  | On req  | ✅ |
-| 10101 | MANUAL_CONTROL  | Host → Board  | On cmd  | 🟡 defined, UI pending |
+| MSG ID | Name | Direction | Rate | Payload | Status |
+|--------|------|-----------|------|---------|--------|
+| 0     | HEARTBEAT       | Bidirectional | 1000 ms | 2 B  | ✅ |
+| 10001 | CHARGER_STATUS  | Board → Host  | 100 ms  | 10 B | ✅ |
+| 10002 | SENSOR_DATA     | Board → Host  | 500 ms  | 53 B | ✅ |
+| 10003 | METER_DATA      | Board → Host  | 500 ms  | 50 B | ✅ |
+| 10100 | CHARGER_COMMAND | Host → Board  | On cmd  | 7 B  | ✅ |
+| 10102 | COMMAND_ACK     | Board → Host  | On ACK  | 5 B  | ✅ |
+| 10200 | CONFIG_REQUEST  | Host → Board  | On req  | 4 B  | ✅ |
+| 10201 | CONFIG_RESPONSE | Board → Host  | On req  | 40 B | ✅ |
+| 10101 | MANUAL_CONTROL  | Host → Board  | On cmd  | 6 B  | 🟡 defined, UI pending |
 
 ---
 
