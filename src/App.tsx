@@ -1,8 +1,9 @@
 /**
  * Main Application Component
  *
- * Combines all panels into the main layout with tab-based navigation
- * for DC Charger and EVCC modes.
+ * MAVLink V2 Lite monitor for the EVAR DC Charger.
+ * The charger model (DURA / MOOEV / Parky) is auto-detected from heartbeat COMPID.
+ * Model tab bar: DURA is the only implemented model; MOOEV and Parky are placeholders.
  */
 
 import { ConnectionPanel } from './components/ConnectionPanel';
@@ -13,59 +14,70 @@ import { ChargerStatusPanel } from './components/ChargerStatusPanel';
 import { SensorDataPanel } from './components/SensorDataPanel';
 import { ChargerCommandPanel } from './components/ChargerCommandPanel';
 import { ConfigPanel } from './components/ConfigPanel';
-import { EvccStatusPanel } from './components/EvccStatusPanel';
-import { EvccChargingPanel } from './components/EvccChargingPanel';
-import { EvccCommandPanel } from './components/EvccCommandPanel';
-import { EvccConfigPanel } from './components/EvccConfigPanel';
 import { useHeartbeat } from './hooks/useHeartbeat';
 import { useChargerData } from './hooks/useChargerData';
 import { useChargerCommand } from './hooks/useChargerCommand';
 import { useConfig } from './hooks/useConfig';
-import { useEvccData } from './hooks/useEvccData';
-import { useEvccCommand } from './hooks/useEvccCommand';
 import { useAppContext } from './context/AppContext';
+import type { ActiveModel, ChargerModel } from './context/appReducer';
 import './App.css';
 
-const DEVICE_BADGE_LABELS: Record<string, string> = {
+const MODEL_BADGE_LABELS: Record<ChargerModel, string> = {
   none: '',
-  charger: 'Charger',
-  evcc: 'EVCC',
-  both: 'Charger + EVCC',
+  dura: 'DURA',
+  mooev: 'MOOEV',
+  parky: 'Parky',
+  unknown: 'Unknown model',
 };
+
+interface ModelTab {
+  id: ActiveModel;
+  label: string;
+  enabled: boolean;
+}
+
+const MODEL_TABS: ModelTab[] = [
+  { id: 'dura',  label: 'DURA',  enabled: true  },
+  { id: 'mooev', label: 'MOOEV', enabled: false },
+  { id: 'parky', label: 'Parky', enabled: false },
+];
 
 export default function App() {
   useHeartbeat();
   useChargerData();
   useChargerCommand();
   useConfig();
-  useEvccData();
-  useEvccCommand();
 
   const { state, dispatch } = useAppContext();
-  const { activeTab, detectedDevice } = state;
+  const { detectedModel, activeModel } = state;
 
   return (
     <div className="app">
       <header className="app-header">
         <h1>MAVLink V2 Lite Monitor</h1>
-        {detectedDevice !== 'none' && (
-          <span className="device-badge">{DEVICE_BADGE_LABELS[detectedDevice]}</span>
+        {detectedModel !== 'none' && (
+          <span className="device-badge">{MODEL_BADGE_LABELS[detectedModel]}</span>
         )}
       </header>
 
-      <div className="tab-bar">
-        <button
-          className={`tab-btn ${activeTab === 'charger' ? 'active' : ''}`}
-          onClick={() => dispatch({ type: 'SET_ACTIVE_TAB', payload: 'charger' })}
-        >
-          DC Charger
-        </button>
-        <button
-          className={`tab-btn ${activeTab === 'evcc' ? 'active' : ''}`}
-          onClick={() => dispatch({ type: 'SET_ACTIVE_TAB', payload: 'evcc' })}
-        >
-          EVCC
-        </button>
+      <div className="model-tab-bar" role="tablist" aria-label="Charger model">
+        {MODEL_TABS.map((tab) => {
+          const isActive = activeModel === tab.id;
+          return (
+            <button
+              key={tab.id}
+              role="tab"
+              aria-selected={isActive}
+              aria-disabled={!tab.enabled}
+              disabled={!tab.enabled}
+              className={`model-tab-btn ${isActive ? 'active' : ''}`}
+              onClick={() => tab.enabled && dispatch({ type: 'SET_ACTIVE_MODEL', payload: tab.id })}
+              title={tab.enabled ? undefined : 'Not yet implemented'}
+            >
+              {tab.label}
+            </button>
+          );
+        })}
       </div>
 
       <main className="app-main">
@@ -74,21 +86,21 @@ export default function App() {
           <StatusDisplay />
           <StatisticsPanel />
         </div>
-        {activeTab === 'charger' ? (
+
+        {activeModel === 'dura' && (
           <div className="data-row">
             <ChargerStatusPanel />
             <SensorDataPanel />
             <ChargerCommandPanel />
             <ConfigPanel />
           </div>
-        ) : (
-          <div className="data-row">
-            <EvccStatusPanel />
-            <EvccChargingPanel />
-            <EvccCommandPanel />
-            <EvccConfigPanel />
+        )}
+        {activeModel !== 'dura' && (
+          <div className="empty-tab">
+            <p>{MODEL_TABS.find((t) => t.id === activeModel)?.label ?? activeModel} is not implemented yet.</p>
           </div>
         )}
+
         <MessageLog />
       </main>
     </div>

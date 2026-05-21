@@ -79,9 +79,9 @@ body {
   margin-left: auto;
 }
 
-/* ---- Tab Bar ---- */
+/* ---- Model Tab Bar ---- */
 
-.tab-bar {
+.model-tab-bar {
   display: flex;
   gap: 0;
   padding: 0 16px;
@@ -89,7 +89,7 @@ body {
   flex-shrink: 0;
 }
 
-.tab-btn {
+.model-tab-btn {
   padding: 8px 20px;
   background: transparent;
   border: none;
@@ -101,13 +101,32 @@ body {
   transition: color 0.15s, border-color 0.15s;
 }
 
-.tab-btn:hover {
+.model-tab-btn:hover:not(:disabled) {
   color: var(--text);
 }
 
-.tab-btn.active {
+.model-tab-btn.active {
   color: var(--accent);
   border-bottom-color: var(--accent);
+}
+
+.model-tab-btn:disabled {
+  color: rgba(150, 150, 150, 0.4);
+  cursor: not-allowed;
+}
+
+/* ---- Empty Tab Placeholder ---- */
+
+.empty-tab {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-dim);
+  font-size: 13px;
+  border: 1px dashed var(--border);
+  border-radius: 4px;
+  margin: 8px 0;
 }
 
 .app-main {
