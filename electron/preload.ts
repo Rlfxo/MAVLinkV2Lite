@@ -70,8 +70,16 @@ const electronAPI = {
       return () => ipcRenderer.removeListener('sensor-data:received', handler);
     },
   },
+  meterData: {
+    onReceived: (callback: (data: unknown) => void) => {
+      const handler = (_event: Electron.IpcRendererEvent, data: unknown) => callback(data);
+      ipcRenderer.on('meter-data:received', handler);
+      return () => ipcRenderer.removeListener('meter-data:received', handler);
+    },
+  },
   chargerCommand: {
-    send: (payload: { maxPowerKw: number; command: number }) =>
+    /** Returns the allocated uuid (uint32). Use this to match COMMAND_ACK. */
+    send: (payload: { maxPowerKw: number; command: number }): Promise<number> =>
       ipcRenderer.invoke('command:send-charger-command', payload),
     onSent: (callback: (data: unknown) => void) => {
       const handler = (_event: Electron.IpcRendererEvent, data: unknown) => callback(data);
@@ -87,7 +95,8 @@ const electronAPI = {
     },
   },
   config: {
-    sendRequest: () => ipcRenderer.invoke('config:send-request'),
+    /** Returns the allocated uuid (uint32). Use this to match CONFIG_RESPONSE. */
+    sendRequest: (): Promise<number> => ipcRenderer.invoke('config:send-request'),
     onRequestSent: (callback: (data: unknown) => void) => {
       const handler = (_event: Electron.IpcRendererEvent, data: unknown) => callback(data);
       ipcRenderer.on('config-request:sent', handler);

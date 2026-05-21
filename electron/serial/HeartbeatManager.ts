@@ -1,21 +1,31 @@
 /**
  * Heartbeat Manager
  *
- * Manages MAVLink HEARTBEAT message transmission and reception.
- * Monitors connection status with timeout detection.
+ * Manages MAVLink V2 Lite TX scheduling (HEARTBEAT periodic, request
+ * messages on-demand) and RX dispatching for all known message types.
+ * Also handles connection liveness via HEARTBEAT timeout detection and
+ * generates uuids for command/config requests.
  */
 
 import { EventEmitter } from 'events';
 import { SerialPortManager } from './SerialPortManager';
 import { MAVLinkParser } from '../protocol/parser';
 import {
-  createPcHeartbeat, decodeHeartbeatPayload, decodeChargerStatusPayload, decodeSensorDataPayload,
-  encodeChargerCommand, decodeCommandAckPayload, encodeConfigRequest, decodeConfigResponsePayload,
+  createPcHeartbeat,
+  decodeHeartbeatPayload,
+  decodeChargerStatusPayload,
+  decodeSensorDataPayload,
+  decodeMeterDataPayload,
+  encodeChargerCommand,
+  decodeCommandAckPayload,
+  encodeConfigRequest,
+  decodeConfigResponsePayload,
 } from '../protocol/encoder';
 import {
   MAVLINK_MSG_ID_HEARTBEAT,
   MAVLINK_MSG_ID_CHARGER_STATUS,
   MAVLINK_MSG_ID_SENSOR_DATA,
+  MAVLINK_MSG_ID_METER_DATA,
   MAVLINK_MSG_ID_COMMAND_ACK,
   MAVLINK_MSG_ID_CONFIG_RESPONSE,
   SYSID_APP_TESTER,
@@ -25,18 +35,18 @@ import {
   HEARTBEAT_CHECK_INTERVAL_MS,
 } from '../protocol/constants';
 import type {
-  HeartbeatPayload, ChargerStatusPayload, SensorDataPayload, ChargerCommandPayload,
-  CommandAckPayload, ConfigResponsePayload, MAVLinkMessage,
+  HeartbeatPayload,
+  ChargerStatusPayload,
+  SensorDataPayload,
+  MeterDataPayload,
+  ChargerCommandPayload,
+  CommandAckPayload,
+  ConfigResponsePayload,
+  MAVLinkMessage,
 } from '../protocol/types';
 
 /**
  * Heartbeat Manager Events
- *
- * - 'heartbeat-sent': Emitted when HEARTBEAT is transmitted (seq: number)
- * - 'heartbeat-received': Emitted when HEARTBEAT is received (payload: HeartbeatPayload)
- * - 'heartbeat-timeout': Emitted when no HEARTBEAT received within timeout period
- * - 'connection-established': Emitted when first HEARTBEAT is received after connection
- * - 'connection-lost': Emitted when connection times out
  */
 export interface HeartbeatManagerEvents {
   'heartbeat-sent': (seq: number) => void;
@@ -46,15 +56,13 @@ export interface HeartbeatManagerEvents {
   'connection-lost': () => void;
   'charger-status-received': (payload: ChargerStatusPayload, message: MAVLinkMessage) => void;
   'sensor-data-received': (payload: SensorDataPayload, message: MAVLinkMessage) => void;
+  'meter-data-received': (payload: MeterDataPayload, message: MAVLinkMessage) => void;
   'charger-command-sent': (payload: ChargerCommandPayload, seq: number) => void;
   'command-ack-received': (payload: CommandAckPayload, message: MAVLinkMessage) => void;
-  'config-request-sent': (seq: number) => void;
+  'config-request-sent': (uuid: number, seq: number) => void;
   'config-response-received': (payload: ConfigResponsePayload, message: MAVLinkMessage) => void;
 }
 
-/**
- * Heartbeat Status
- */
 export interface HeartbeatStatus {
   isSending: boolean;
   isConnected: boolean;
@@ -67,31 +75,14 @@ export interface HeartbeatStatus {
 }
 
 /**
- * HeartbeatManager
- *
- * Manages bidirectional HEARTBEAT communication:
- * - Sends HEARTBEAT every 1000ms (configurable)
- * - Receives and parses HEARTBEAT from remote system
- * - Monitors connection status with timeout detection
- *
- * @example
- * ```typescript
- * const serialManager = new SerialPortManager();
- * await serialManager.connect('/dev/ttyUSB0');
- *
- * const heartbeatManager = new HeartbeatManager(serialManager);
- *
- * heartbeatManager.on('heartbeat-received', (payload) => {
- *   console.log('Remote heartbeat:', payload);
- * });
- *
- * heartbeatManager.on('heartbeat-timeout', () => {
- *   console.log('Connection lost!');
- * });
- *
- * heartbeatManager.start();
- * ```
+ * Domain inputs (excluding uuid) accepted by sendChargerCommand.
+ * The manager allocates uuid automatically.
  */
+export interface ChargerCommandRequest {
+  maxPowerKw: number;
+  command: number;
+}
+
 export class HeartbeatManager extends EventEmitter {
   private serialManager: SerialPortManager;
   private parser: MAVLinkParser;
@@ -100,6 +91,11 @@ export class HeartbeatManager extends EventEmitter {
   private txInterval: NodeJS.Timeout | null = null;
   private txSeq: number = 0;
   private heartbeatsSent: number = 0;
+
+  // uuid generator for request messages (CHARGER_COMMAND, CONFIG_REQUEST).
+  // Monotonic per session, starting at 1. Firmware caches recent uuids
+  // and de-dupes retransmissions, so session restart is fine.
+  private nextUuid: number = 1;
 
   // RX (Reception)
   private lastHeartbeat?: HeartbeatPayload;
@@ -116,16 +112,9 @@ export class HeartbeatManager extends EventEmitter {
   private checkIntervalMs: number = HEARTBEAT_CHECK_INTERVAL_MS;
 
   // System IDs
-  private sysid: number = SYSID_APP_TESTER; // App Tester = 201
-  private compid: number = COMPID_ALL;      // 0 (host is not a charger model)
+  private sysid: number = SYSID_APP_TESTER;
+  private compid: number = COMPID_ALL;
 
-  /**
-   * Create HeartbeatManager
-   *
-   * @param serialManager - SerialPortManager instance
-   * @param sysid - System ID for outgoing messages (default: 201, App Tester)
-   * @param compid - Component ID for outgoing messages (default: 0, ALL)
-   */
   constructor(
     serialManager: SerialPortManager,
     sysid: number = SYSID_APP_TESTER,
@@ -136,100 +125,48 @@ export class HeartbeatManager extends EventEmitter {
     this.parser = new MAVLinkParser();
     this.sysid = sysid;
     this.compid = compid;
-
-    // Setup serial data handler
     this.setupDataHandler();
   }
 
-  /**
-   * Start heartbeat transmission and monitoring
-   */
   public start(): void {
     if (this.txInterval) {
       throw new Error('HeartbeatManager already started');
     }
-
-    // Start TX scheduler (1000ms)
-    this.txInterval = setInterval(() => {
-      this.sendHeartbeat();
-    }, this.txIntervalMs);
-
-    // Start timeout checker
-    this.timeoutCheckInterval = setInterval(() => {
-      this.checkTimeout();
-    }, this.checkIntervalMs);
-
-    // Send first heartbeat immediately
+    this.txInterval = setInterval(() => this.sendHeartbeat(), this.txIntervalMs);
+    this.timeoutCheckInterval = setInterval(() => this.checkTimeout(), this.checkIntervalMs);
     this.sendHeartbeat();
   }
 
-  /**
-   * Stop heartbeat transmission and monitoring
-   */
   public stop(): void {
     if (this.txInterval) {
       clearInterval(this.txInterval);
       this.txInterval = null;
     }
-
     if (this.timeoutCheckInterval) {
       clearInterval(this.timeoutCheckInterval);
       this.timeoutCheckInterval = null;
     }
-
     this.wasConnected = false;
   }
 
-  /**
-   * Check if heartbeat manager is running
-   *
-   * @returns true if started
-   */
   public isStarted(): boolean {
     return this.txInterval !== null;
   }
 
-  /**
-   * Check if remote system is connected (heartbeat received recently)
-   *
-   * @returns true if connected (heartbeat received within timeout period)
-   */
   public isConnected(): boolean {
-    if (!this.lastHeartbeatTime) {
-      return false;
-    }
-
-    const timeSince = Date.now() - this.lastHeartbeatTime;
-    return timeSince < this.timeoutMs;
+    if (!this.lastHeartbeatTime) return false;
+    return (Date.now() - this.lastHeartbeatTime) < this.timeoutMs;
   }
 
-  /**
-   * Get last received heartbeat payload
-   *
-   * @returns Last heartbeat payload or undefined if none received
-   */
   public getLastHeartbeat(): HeartbeatPayload | undefined {
     return this.lastHeartbeat;
   }
 
-  /**
-   * Get time since last heartbeat (milliseconds)
-   *
-   * @returns Time since last heartbeat or undefined if none received
-   */
   public getTimeSinceLastHeartbeat(): number | undefined {
-    if (!this.lastHeartbeatTime) {
-      return undefined;
-    }
-
+    if (!this.lastHeartbeatTime) return undefined;
     return Date.now() - this.lastHeartbeatTime;
   }
 
-  /**
-   * Get heartbeat status
-   *
-   * @returns Current heartbeat status
-   */
   public getStatus(): HeartbeatStatus {
     return {
       isSending: this.isStarted(),
@@ -243,9 +180,6 @@ export class HeartbeatManager extends EventEmitter {
     };
   }
 
-  /**
-   * Reset statistics
-   */
   public resetStats(): void {
     this.heartbeatsSent = 0;
     this.heartbeatsReceived = 0;
@@ -254,74 +188,55 @@ export class HeartbeatManager extends EventEmitter {
     this.parser.resetStats();
   }
 
-  /**
-   * Get parser statistics
-   *
-   * @returns Parser statistics
-   */
   public getParserStats() {
     return this.parser.getStats();
   }
 
-  /**
-   * Configure TX interval
-   *
-   * @param intervalMs - TX interval in milliseconds (default: 1000)
-   */
   public setTxInterval(intervalMs: number): void {
     this.txIntervalMs = intervalMs;
-
-    // Restart interval if already running
     if (this.txInterval) {
       this.stop();
       this.start();
     }
   }
 
-  /**
-   * Configure timeout threshold
-   *
-   * @param timeoutMs - Timeout in milliseconds (default: 3000)
-   */
   public setTimeout(timeoutMs: number): void {
     this.timeoutMs = timeoutMs;
   }
 
   /**
-   * Send HEARTBEAT message
+   * Allocate the next uuid for an outgoing request message.
    *
-   * @private
+   * Wraps at 2^32 (so the value always fits in a uint32 wire field).
+   * Firmware only requires per-recent-window uniqueness for the de-dupe
+   * cache, so wrap-around is acceptable in long-running sessions.
    */
+  private allocateUuid(): number {
+    const uuid = this.nextUuid >>> 0;
+    // increment, wrap at 2^32 (back to 1 to avoid 0 which can read as
+    // "no uuid yet" in some UI contexts)
+    this.nextUuid = ((this.nextUuid + 1) >>> 0) || 1;
+    return uuid;
+  }
+
   private sendHeartbeat(): void {
     try {
       const frame = createPcHeartbeat(this.txSeq, this.sysid, this.compid);
       this.serialManager.write(frame);
-
       this.heartbeatsSent++;
-      this.txSeq = (this.txSeq + 1) & 0xFF; // Wrap at 255
-
+      this.txSeq = (this.txSeq + 1) & 0xFF;
       this.emit('heartbeat-sent', this.txSeq - 1);
-    } catch (error) {
-      // Ignore write errors (e.g., port closed)
-      // This allows graceful handling if port is closed while heartbeat is running
+    } catch {
+      // Ignore write errors (e.g., port closed mid-tick)
     }
   }
 
-  /**
-   * Check for heartbeat timeout
-   *
-   * @private
-   */
   private checkTimeout(): void {
     const connected = this.isConnected();
-
-    // Connection established (first heartbeat received)
     if (connected && !this.wasConnected) {
       this.wasConnected = true;
       this.emit('connection-established');
     }
-
-    // Connection lost (timeout)
     if (!connected && this.wasConnected) {
       this.wasConnected = false;
       this.emit('connection-lost');
@@ -329,129 +244,109 @@ export class HeartbeatManager extends EventEmitter {
     }
   }
 
-  /**
-   * Setup serial data handler
-   *
-   * @private
-   */
   private setupDataHandler(): void {
     this.serialManager.on('data', (data: Buffer) => {
-      // Parse incoming data
       const messages = this.parser.parseBuffer(new Uint8Array(data));
-
-      // Process each parsed message
       for (const message of messages) {
-        if (message.msgid === MAVLINK_MSG_ID_HEARTBEAT) {
-          this.handleHeartbeat(message);
-        } else if (message.msgid === MAVLINK_MSG_ID_CHARGER_STATUS) {
-          this.handleChargerStatus(message);
-        } else if (message.msgid === MAVLINK_MSG_ID_SENSOR_DATA) {
-          this.handleSensorData(message);
-        } else if (message.msgid === MAVLINK_MSG_ID_COMMAND_ACK) {
-          this.handleCommandAck(message);
-        } else if (message.msgid === MAVLINK_MSG_ID_CONFIG_RESPONSE) {
-          this.handleConfigResponse(message);
+        switch (message.msgid) {
+          case MAVLINK_MSG_ID_HEARTBEAT:       this.handleHeartbeat(message); break;
+          case MAVLINK_MSG_ID_CHARGER_STATUS:  this.handleChargerStatus(message); break;
+          case MAVLINK_MSG_ID_SENSOR_DATA:     this.handleSensorData(message); break;
+          case MAVLINK_MSG_ID_METER_DATA:      this.handleMeterData(message); break;
+          case MAVLINK_MSG_ID_COMMAND_ACK:     this.handleCommandAck(message); break;
+          case MAVLINK_MSG_ID_CONFIG_RESPONSE: this.handleConfigResponse(message); break;
         }
       }
     });
   }
 
-  /**
-   * Handle received HEARTBEAT message
-   *
-   * @param message - Parsed MAVLink message
-   * @private
-   */
   private handleHeartbeat(message: MAVLinkMessage): void {
     try {
       const payload = decodeHeartbeatPayload(message.payload);
-
       this.lastHeartbeat = payload;
       this.lastHeartbeatTime = Date.now();
       this.heartbeatsReceived++;
-
       this.emit('heartbeat-received', payload, message);
-    } catch (error) {
-      // Ignore decode errors (invalid payload length, etc.)
+    } catch {
+      /* ignore decode errors */
     }
   }
 
-  /**
-   * Handle received CHARGER_STATUS message
-   */
   private handleChargerStatus(message: MAVLinkMessage): void {
     try {
       const payload = decodeChargerStatusPayload(message.payload);
       this.emit('charger-status-received', payload, message);
-    } catch (error) {
-      // Ignore decode errors
-    }
+    } catch { /* ignore */ }
   }
 
-  /**
-   * Handle received SENSOR_DATA message
-   */
   private handleSensorData(message: MAVLinkMessage): void {
     try {
       const payload = decodeSensorDataPayload(message.payload);
       this.emit('sensor-data-received', payload, message);
-    } catch (error) {
-      // Ignore decode errors
-    }
+    } catch { /* ignore */ }
+  }
+
+  private handleMeterData(message: MAVLinkMessage): void {
+    try {
+      const payload = decodeMeterDataPayload(message.payload);
+      this.emit('meter-data-received', payload, message);
+    } catch { /* ignore */ }
   }
 
   /**
-   * Send CHARGER_COMMAND message (on-demand, not periodic)
+   * Send CHARGER_COMMAND. uuid is auto-allocated and returned so the
+   * caller can correlate the COMMAND_ACK.
    */
-  public sendChargerCommand(commandPayload: ChargerCommandPayload): void {
+  public sendChargerCommand(req: ChargerCommandRequest): number {
+    const uuid = this.allocateUuid();
+    const payload: ChargerCommandPayload = {
+      uuid,
+      maxPowerKw: req.maxPowerKw,
+      command: req.command,
+    };
     const frame = encodeChargerCommand({
       sysid: this.sysid,
       compid: this.compid,
       seq: this.txSeq,
-      ...commandPayload,
+      ...payload,
     });
     this.serialManager.write(frame);
     const sentSeq = this.txSeq;
     this.txSeq = (this.txSeq + 1) & 0xFF;
-    this.emit('charger-command-sent', commandPayload, sentSeq);
+    this.emit('charger-command-sent', payload, sentSeq);
+    return uuid;
   }
 
-  /**
-   * Handle received COMMAND_ACK message
-   */
   private handleCommandAck(message: MAVLinkMessage): void {
     try {
       const payload = decodeCommandAckPayload(message.payload);
       this.emit('command-ack-received', payload, message);
-    } catch (error) {
-      // Ignore decode errors
-    }
+    } catch { /* ignore */ }
   }
 
   /**
-   * Send CONFIG_REQUEST message (on-demand, 0B payload)
+   * Send CONFIG_REQUEST. uuid is auto-allocated and returned so the
+   * caller can correlate the CONFIG_RESPONSE.
    */
-  public sendConfigRequest(): void {
+  public sendConfigRequest(): number {
+    const uuid = this.allocateUuid();
     const frame = encodeConfigRequest({
       sysid: this.sysid,
       compid: this.compid,
       seq: this.txSeq,
+      uuid,
     });
     this.serialManager.write(frame);
     const sentSeq = this.txSeq;
     this.txSeq = (this.txSeq + 1) & 0xFF;
-    this.emit('config-request-sent', sentSeq);
+    this.emit('config-request-sent', uuid, sentSeq);
+    return uuid;
   }
 
-  /**
-   * Handle received CONFIG_RESPONSE message
-   */
   private handleConfigResponse(message: MAVLinkMessage): void {
     try {
       const payload = decodeConfigResponsePayload(message.payload);
       this.emit('config-response-received', payload, message);
-    } catch (error) {
-      // Ignore decode errors
-    }
+    } catch { /* ignore */ }
   }
 }

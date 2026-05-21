@@ -6,10 +6,10 @@
  */
 
 import { ipcMain, BrowserWindow } from 'electron';
-import { HeartbeatManager } from '../serial/HeartbeatManager';
+import { HeartbeatManager, ChargerCommandRequest } from '../serial/HeartbeatManager';
 import type {
-  HeartbeatPayload, ChargerStatusPayload, SensorDataPayload, ChargerCommandPayload,
-  CommandAckPayload, ConfigResponsePayload, MAVLinkMessage,
+  HeartbeatPayload, ChargerStatusPayload, SensorDataPayload, MeterDataPayload,
+  ChargerCommandPayload, CommandAckPayload, ConfigResponsePayload, MAVLinkMessage,
 } from '../protocol/types';
 
 /**
@@ -102,9 +102,24 @@ export function registerHeartbeatHandlers(
     }
   });
 
-  // Handle CHARGER_COMMAND send request from renderer
-  ipcMain.handle('command:send-charger-command', (_event, payload: ChargerCommandPayload) => {
-    heartbeatManager.sendChargerCommand(payload);
+  // Forward METER_DATA events to renderer
+  heartbeatManager.on('meter-data-received', (payload: MeterDataPayload, message: MAVLinkMessage) => {
+    const win = getWindow();
+    if (win && !win.isDestroyed()) {
+      win.webContents.send('meter-data:received', {
+        payload,
+        seq: message.seq,
+        sysid: message.sysid,
+        compid: message.compid,
+        timestamp: Date.now(),
+      });
+    }
+  });
+
+  // Handle CHARGER_COMMAND send request from renderer.
+  // uuid is allocated in main process and returned as the invoke result.
+  ipcMain.handle('command:send-charger-command', (_event, req: ChargerCommandRequest): number => {
+    return heartbeatManager.sendChargerCommand(req);
   });
 
   // Forward CHARGER_COMMAND sent event to renderer
@@ -133,16 +148,17 @@ export function registerHeartbeatHandlers(
     }
   });
 
-  // Handle CONFIG_REQUEST send request from renderer
-  ipcMain.handle('config:send-request', () => {
-    heartbeatManager.sendConfigRequest();
+  // Handle CONFIG_REQUEST send request from renderer.
+  // uuid is allocated in main process and returned as the invoke result.
+  ipcMain.handle('config:send-request', (): number => {
+    return heartbeatManager.sendConfigRequest();
   });
 
-  // Forward CONFIG_REQUEST sent event to renderer
-  heartbeatManager.on('config-request-sent', (seq: number) => {
+  // Forward CONFIG_REQUEST sent event to renderer (includes the allocated uuid)
+  heartbeatManager.on('config-request-sent', (uuid: number, seq: number) => {
     const win = getWindow();
     if (win && !win.isDestroyed()) {
-      win.webContents.send('config-request:sent', { seq, timestamp: Date.now() });
+      win.webContents.send('config-request:sent', { uuid, seq, timestamp: Date.now() });
     }
   });
 

@@ -57,17 +57,26 @@ export const MAVLINK_MSG_ID_HEARTBEAT = 0;
 
 /**
  * CHARGER_STATUS message (custom, 10001)
- * Sent by DC Charger every 500ms
- * Contains real-time charging status
+ * Sent by DC Charger every 100 ms (10 Hz)
+ * Contains charger state, relay bitmap, uptime, storage SOC (10 B payload).
+ * All peripheral measurements live in METER_DATA / SENSOR_DATA.
  */
 export const MAVLINK_MSG_ID_CHARGER_STATUS = 10001;
 
 /**
  * SENSOR_DATA message (custom, 10002)
- * Sent by DC Charger every 1000ms
- * Contains sensor readings (temperature, etc.)
+ * Sent by DC Charger every 500 ms (2 Hz)
+ * Environment + IMU + DCGF + IMD readings (53 B, all fixed_t).
  */
 export const MAVLINK_MSG_ID_SENSOR_DATA = 10002;
+
+/**
+ * METER_DATA message (custom, 10003)
+ * Sent by DC Charger every 500 ms (2 Hz)
+ * SPM90 meter1 / meter2 (V/I/P/E) + pre-summed total_power / total_energy.
+ * 50 B payload, all fixed_t. MOOEV has no meter2 → fields = (value=0, exp=0).
+ */
+export const MAVLINK_MSG_ID_METER_DATA = 10003;
 
 /**
  * CHARGER_COMMAND message (custom, 10100)
@@ -171,15 +180,21 @@ export const COMPID_PARKY = 3;
 // ============================================================================
 
 /**
- * MAV_STATE values (simplified for DC Charger)
+ * MAV_STATE values (DC Charger dialect).
+ *
+ * FW_OTA / PLC_OTA can only be entered from STANDBY (rejected during RUN),
+ * and at most one OTA may be active at a time. Both reboot back to BOOT
+ * when the OTA completes.
  */
 export enum MAV_STATE {
-  UNINIT = 0,
-  BOOT = 1,
-  STANDBY = 2,
-  RUN = 3,
-  ERROR = 4,
-  SHUTDOWN = 5,
+  UNINIT = 0,    // Pre-init; rarely seen in normal operation
+  BOOT = 1,      // Powered, peripherals coming up
+  STANDBY = 2,   // Init complete; ready to accept commands
+  RUN = 3,       // Executing a charge / discharge command
+  ERROR = 4,     // Peripheral or situational error; operation halted
+  SHUTDOWN = 5,  // Intentional / emergency stop
+  FW_OTA = 6,    // MCU firmware OTA in progress; commands rejected
+  PLC_OTA = 7,   // PLC modem firmware OTA in progress; commands rejected
 }
 
 /**

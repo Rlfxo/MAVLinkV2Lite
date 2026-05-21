@@ -84,62 +84,106 @@ export interface HeartbeatPayload {
 }
 
 // ============================================================================
-// CHARGER_STATUS Message (Message ID: 10001)
+// fixed_t — wire representation for physical quantities
 // ============================================================================
 
 /**
- * CHARGER_STATUS message payload
+ * fixed_t — 5-byte fixed-point wire format used by SENSOR_DATA / METER_DATA.
  *
- * Charger operational status, sent by DC Charger every 500ms.
- * Contains discharging/recharging state, BMS info, relay, and diagnostics.
+ *   actual_value = value × 10^exp,  in SI base unit (V, A, W, Wh, °C, %, m/s², °/s)
  *
- * Payload size: 16 bytes (Phase 3)
+ * The encoder/firmware sends peripheral-raw integers + a constant exp per
+ * field (e.g. SHT3X temperature: exp=-2 ⇒ centi-degC LSB). For convenience,
+ * use `fixedToFloat(ft)` to obtain a JS number.
+ */
+export interface FixedT {
+  value: number;  // int32 LE
+  exp: number;    // int8
+}
+
+// ============================================================================
+// CHARGER_STATUS Message (Message ID: 10001) — 10 B, 10 Hz
+// ============================================================================
+
+/**
+ * CHARGER_STATUS payload (10 B, periodic 100 ms / 10 Hz).
+ *
+ * Slim "control-critical" snapshot: high-level state + relay topology +
+ * uptime + storage SOC. All peripheral measurements live in METER_DATA
+ * (V/I/P/E) or SENSOR_DATA (environment/IMU/DCGF/IMD).
  */
 export interface ChargerStatusPayload {
-  discharging: number;   // uint8_t - discharge state (0=off, 1~255)
-  recharging: number;    // uint8_t - recharge state (0=off, 1~255)
-  bmsVendor: number;     // uint8_t - BMS vendor enum
-  bmsCap: number;        // uint16_t - BMS capacity (kWh)
-  outCap: number;        // uint8_t - Output converter max capacity (kW)
-  bmsSoc: number;        // uint8_t - SOC (%)
-  diagnosis: number;     // uint8_t - Diagnosis flags (bitmask)
-  relayBitmap: number;   // uint32_t - Relay bitmap
-  uptimeSec: number;     // uint32_t - System uptime (sec)
+  state: number;         // uint8 - MAV_STATE
+  relayBitmap: number;   // uint32 LE - bit 0..15 = RY1..RY16, bit 16 = MC
+  uptimeSec: number;     // uint32 LE - charger uptime (s)
+  storageSoc: number;    // uint8 - 0..100 % (battery models). DURA: 0 = N/A
 }
 
 // ============================================================================
-// SENSOR_DATA Message (Message ID: 10002)
+// METER_DATA Message (Message ID: 10003) — 50 B, 2 Hz
 // ============================================================================
 
 /**
- * SENSOR_DATA message payload
+ * METER_DATA payload (50 B, periodic 500 ms / 2 Hz).
  *
- * Sensor readings, sent by DC Charger every 1000ms.
- * Contains environment, IMU, DCGF, power meter, and IMD data.
+ * SPM90 meter measurements. `total_*` are firmware-summed (intra-frame
+ * consistency between meter1 + meter2). DURA exposes both meters; MOOEV
+ * has no meter2 and reports it as (value=0, exp=0).
  *
- * Payload size: 52 bytes (Phase 3)
+ * SPM90 native exponents (encoder uses these as-is):
+ *   voltage: exp = -1 (100 mV LSB)
+ *   current: exp = -2 (10 mA LSB)
+ *   power:   exp =  0 (1 W LSB)
+ *   energy:  exp = +1 (10 Wh LSB)
+ *
+ * Sign convention: positive current/power = charger → external (charging),
+ * negative = V2G / external → charger (reverse).
  */
-export interface SensorDataPayload {
-  temperatureC: number;   // float - Temperature (degC)
-  humidityPct: number;    // float - Humidity (%)
-  accelXMps2: number;     // float - Accel X (m/s^2)
-  accelYMps2: number;     // float - Accel Y (m/s^2)
-  accelZMps2: number;     // float - Accel Z (m/s^2)
-  gyroXDps: number;       // float - Gyro X (deg/s)
-  gyroYDps: number;       // float - Gyro Y (deg/s)
-  gyroZDps: number;       // float - Gyro Z (deg/s)
-  dcgfFault: number;      // uint16_t - DCGF fault code
-  dcgfVolt1: number;      // uint16_t - DCGF voltage 1 (mV)
-  dcgfVolt2: number;      // uint16_t - DCGF voltage 2 (mV)
-  meterVoltage: number;   // uint32_t - Power meter voltage (mV)
-  meterCurrent: number;   // uint32_t - Power meter current (mA)
-  meterEnergy: number;    // uint32_t - Power meter energy (Wh)
-  imdStopMode: number;    // uint8_t - IMD stop mode
-  reserved: number;       // uint8_t - Reserved (alignment)
+export interface MeterDataPayload {
+  totalPower: FixedT;     // W, summed across meters
+  totalEnergy: FixedT;    // Wh, summed across meters
+  meter1Voltage: FixedT;
+  meter1Current: FixedT;
+  meter1Power: FixedT;
+  meter1Energy: FixedT;
+  meter2Voltage: FixedT;  // DURA only; MOOEV: (0,0)
+  meter2Current: FixedT;
+  meter2Power: FixedT;
+  meter2Energy: FixedT;
 }
 
 // ============================================================================
-// CHARGER_COMMAND Message (Message ID: 10100)
+// SENSOR_DATA Message (Message ID: 10002) — 53 B, 2 Hz
+// ============================================================================
+
+/**
+ * SENSOR_DATA payload (53 B, periodic 500 ms / 2 Hz).
+ *
+ * Environment + IMU + DCGF + IMD. All physical quantities are fixed_t in
+ * SI base units (°C, %, m/s², °/s, V). Peripheral defaults:
+ *   SHT3X temperature/humidity: exp = -2
+ *   LSM6DSO32 accel/gyro:       exp = -3
+ *   DCGF voltage:               exp = -1
+ *
+ * Meter measurements moved to METER_DATA — not in this message.
+ */
+export interface SensorDataPayload {
+  temperature: FixedT;   // °C
+  humidity: FixedT;      // %
+  accelX: FixedT;        // m/s²
+  accelY: FixedT;
+  accelZ: FixedT;
+  gyroX: FixedT;         // °/s
+  gyroY: FixedT;
+  gyroZ: FixedT;
+  dcgfFault: number;     // uint16 LE - DCGF fault bitmask (raw)
+  dcgfVolt1: FixedT;     // V
+  dcgfVolt2: FixedT;     // V
+  imdStopMode: number;   // uint8 - IMD stop mode (MOOEV only; DURA: 0)
+}
+
+// ============================================================================
+// CHARGER_COMMAND Message (Message ID: 10100) — 7 B
 // ============================================================================
 
 /**
@@ -152,19 +196,20 @@ export enum ChargerCommandType {
 }
 
 /**
- * CHARGER_COMMAND message payload
+ * CHARGER_COMMAND payload (7 B). PC → Charger, on-demand.
  *
- * Charging control commands, sent by PC to DC Charger.
- *
- * Payload size: 3 bytes (Phase 4)
+ * `uuid` is a PC-assigned 32-bit id per command instance (monotonic counter
+ * is fine). Firmware echoes uuid in COMMAND_ACK and de-dupes retransmissions
+ * by uuid cache, so retrying a lost ACK is safe.
  */
 export interface ChargerCommandPayload {
-  maxPowerKw: number;   // uint16_t - Max power (kW)
-  command: number;      // uint8_t - Command type (ChargerCommandType)
+  uuid: number;         // uint32 LE - PC-assigned command instance id
+  maxPowerKw: number;   // uint16 LE - max power (kW)
+  command: number;      // uint8 - ChargerCommandType
 }
 
 // ============================================================================
-// COMMAND_ACK Message (Message ID: 10102)
+// COMMAND_ACK Message (Message ID: 10102) — 5 B
 // ============================================================================
 
 /**
@@ -178,32 +223,40 @@ export enum CommandResult {
 }
 
 /**
- * COMMAND_ACK message payload
+ * COMMAND_ACK payload (5 B). Charger → PC, in reply to CHARGER_COMMAND.
  *
- * Acknowledgment from DC Charger in response to commands.
- *
- * Payload size: 3 bytes
+ * The legacy `targetMsgId` field is gone — `uuid` (echoed from the request)
+ * is the sole correlation key.
  */
 export interface CommandAckPayload {
-  targetMsgId: number;  // uint16_t - ACK target MSG_ID
-  result: number;       // uint8_t - CommandResult
+  uuid: number;   // uint32 LE - echoed from CHARGER_COMMAND.uuid
+  result: number; // uint8 - CommandResult
 }
 
 // ============================================================================
-// CONFIG_RESPONSE Message (Message ID: 10201)
+// CONFIG_REQUEST Message (Message ID: 10200) — 4 B
 // ============================================================================
 
 /**
- * CONFIG_RESPONSE message payload
+ * CONFIG_REQUEST payload (4 B). PC → Charger, on-demand.
  *
- * Charger firmware/hardware information, sent by DC Charger in response to CONFIG_REQUEST.
- * CONFIG_REQUEST (10200) has 0-byte payload — no dedicated type needed.
- *
- * Payload size: 36 bytes
+ * Firmware replies with CONFIG_RESPONSE carrying the same uuid.
+ */
+export interface ConfigRequestPayload {
+  uuid: number;   // uint32 LE - PC-assigned request instance id
+}
+
+// ============================================================================
+// CONFIG_RESPONSE Message (Message ID: 10201) — 40 B
+// ============================================================================
+
+/**
+ * CONFIG_RESPONSE payload (40 B). Charger → PC, in reply to CONFIG_REQUEST.
  */
 export interface ConfigResponsePayload {
-  fwVersion: number;    // uint32_t LE — 0x00XXYYZZ → XX.YY.ZZ
-  hwVersion: number;    // uint32_t LE
+  uuid: number;         // uint32 LE - echoed from CONFIG_REQUEST.uuid
+  fwVersion: number;    // uint32 LE - 0x00 MAJOR MINOR PATCH
+  hwVersion: number;    // uint32 LE - HW revision word
   modelName: string;    // char[16] null-terminated UTF-8
   buildDate: string;    // char[12] YYYYMMDDHHMM
 }
