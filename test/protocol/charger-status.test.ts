@@ -27,16 +27,16 @@ const samplePayload: ChargerStatusPayload = {
 
 describe('CHARGER_STATUS Encoder/Decoder', () => {
   describe('Frame Structure', () => {
-    it('should produce correct frame length (STX+9+16+CRC=28)', () => {
+    it('should produce correct frame length (STX+7+16+CRC=26)', () => {
       const frame = encodeChargerStatus({ sysid: 1, compid: 0, seq: 0, ...samplePayload });
-      expect(frame.length).toBe(28);
+      expect(frame.length).toBe(26);
     });
 
     it('should have correct STX, LEN, and MSG_ID', () => {
       const frame = encodeChargerStatus({ sysid: 1, compid: 0, seq: 0, ...samplePayload });
-      expect(frame[0]).toBe(0xFD);       // STX
+      expect(frame[0]).toBe(0xFC);       // STX (V2 Lite)
       expect(frame[1]).toBe(16);         // LEN = 16
-      const msgid = frame[7] | (frame[8] << 8) | (frame[9] << 16);
+      const msgid = frame[5] | (frame[6] << 8) | (frame[7] << 16);
       expect(msgid).toBe(MAVLINK_MSG_ID_CHARGER_STATUS);
     });
   });
@@ -44,7 +44,7 @@ describe('CHARGER_STATUS Encoder/Decoder', () => {
   describe('Round-trip Encoding/Decoding', () => {
     it('should preserve data through encode → payload-slice → decode', () => {
       const frame = encodeChargerStatus({ sysid: 1, compid: 0, seq: 0, ...samplePayload });
-      const payload = frame.subarray(10, 10 + 16);
+      const payload = frame.subarray(8, 8 + 16);
       const decoded = decodeChargerStatusPayload(payload);
       expect(decoded).toEqual(samplePayload);
     });
@@ -55,7 +55,7 @@ describe('CHARGER_STATUS Encoder/Decoder', () => {
         outCap: 0, bmsSoc: 0, diagnosis: 0, relayBitmap: 0, uptimeSec: 0,
       };
       const frame = encodeChargerStatus({ sysid: 1, compid: 0, seq: 0, ...zeros });
-      const decoded = decodeChargerStatusPayload(frame.subarray(10, 26));
+      const decoded = decodeChargerStatusPayload(frame.subarray(8, 24));
       expect(decoded).toEqual(zeros);
     });
   });
@@ -82,7 +82,7 @@ describe('CHARGER_STATUS Encoder/Decoder', () => {
         relayBitmap: 0, uptimeSec: 0,
       };
       const frame = encodeChargerStatus({ sysid: 1, compid: 0, seq: 0, ...p });
-      const decoded = decodeChargerStatusPayload(frame.subarray(10, 26));
+      const decoded = decodeChargerStatusPayload(frame.subarray(8, 24));
       expect(decoded.discharging).toBe(255);
       expect(decoded.recharging).toBe(255);
       expect(decoded.bmsVendor).toBe(255);
@@ -94,14 +94,14 @@ describe('CHARGER_STATUS Encoder/Decoder', () => {
     it('should handle uint16 max (65535) for bmsCap', () => {
       const p = { ...samplePayload, bmsCap: 0xFFFF };
       const frame = encodeChargerStatus({ sysid: 1, compid: 0, seq: 0, ...p });
-      const decoded = decodeChargerStatusPayload(frame.subarray(10, 26));
+      const decoded = decodeChargerStatusPayload(frame.subarray(8, 24));
       expect(decoded.bmsCap).toBe(0xFFFF);
     });
 
     it('should handle uint32 max (4294967295) for relayBitmap and uptimeSec', () => {
       const p = { ...samplePayload, relayBitmap: 0xFFFFFFFF, uptimeSec: 0xFFFFFFFF };
       const frame = encodeChargerStatus({ sysid: 1, compid: 0, seq: 0, ...p });
-      const decoded = decodeChargerStatusPayload(frame.subarray(10, 26));
+      const decoded = decodeChargerStatusPayload(frame.subarray(8, 24));
       expect(decoded.relayBitmap).toBe(0xFFFFFFFF);
       expect(decoded.uptimeSec).toBe(0xFFFFFFFF);
     });
@@ -111,27 +111,27 @@ describe('CHARGER_STATUS Encoder/Decoder', () => {
     it('should write bmsCap in LE at offset 3', () => {
       const p = { ...samplePayload, bmsCap: 0x1234 };
       const frame = encodeChargerStatus({ sysid: 1, compid: 0, seq: 0, ...p });
-      // payload starts at offset 10; bmsCap is at payload offset 3
-      expect(frame[10 + 3]).toBe(0x34); // low byte
-      expect(frame[10 + 4]).toBe(0x12); // high byte
+      // payload starts at offset 8 (V2 Lite: STX+7-byte header); bmsCap is at payload offset 3
+      expect(frame[8 + 3]).toBe(0x34); // low byte
+      expect(frame[8 + 4]).toBe(0x12); // high byte
     });
 
     it('should write relayBitmap in LE at offset 8', () => {
       const p = { ...samplePayload, relayBitmap: 0xDEADBEEF };
       const frame = encodeChargerStatus({ sysid: 1, compid: 0, seq: 0, ...p });
-      expect(frame[10 + 8]).toBe(0xEF);
-      expect(frame[10 + 9]).toBe(0xBE);
-      expect(frame[10 + 10]).toBe(0xAD);
-      expect(frame[10 + 11]).toBe(0xDE);
+      expect(frame[8 + 8]).toBe(0xEF);
+      expect(frame[8 + 9]).toBe(0xBE);
+      expect(frame[8 + 10]).toBe(0xAD);
+      expect(frame[8 + 11]).toBe(0xDE);
     });
 
     it('should write uptimeSec in LE at offset 12', () => {
       const p = { ...samplePayload, uptimeSec: 0x12345678 };
       const frame = encodeChargerStatus({ sysid: 1, compid: 0, seq: 0, ...p });
-      expect(frame[10 + 12]).toBe(0x78);
-      expect(frame[10 + 13]).toBe(0x56);
-      expect(frame[10 + 14]).toBe(0x34);
-      expect(frame[10 + 15]).toBe(0x12);
+      expect(frame[8 + 12]).toBe(0x78);
+      expect(frame[8 + 13]).toBe(0x56);
+      expect(frame[8 + 14]).toBe(0x34);
+      expect(frame[8 + 15]).toBe(0x12);
     });
   });
 

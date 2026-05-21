@@ -6,42 +6,41 @@
  */
 
 // ============================================================================
-// MAVLink V2 Frame Structure Constants
+// MAVLink V2 Lite Frame Structure Constants
 // ============================================================================
 
 /**
- * MAVLink V2 Start-of-frame marker (STX)
- * Every MAVLink V2 frame starts with this byte
+ * MAVLink V2 Lite Start-of-frame marker (STX)
+ * Distinct from upstream MAVLink V2 (0xFD) by 1 bit to identify this dialect.
  */
-export const MAVLINK_STX_V2 = 0xFD;
+export const MAVLINK_STX_V2_Lite = 0xFC;
 
 /**
- * MAVLink V2 header length (without STX and CRC)
- * Header: LEN(1) + INC_FLAGS(1) + CMP_FLAGS(1) + SEQ(1) + SYSID(1) + COMPID(1) + MSGID(3) = 9 bytes
+ * MAVLink V2 Lite header length (without STX and CRC)
+ * Header: LEN(1) + SEQ(1) + SYSID(1) + COMPID(1) + MSGID(3) = 7 bytes
+ * (INCOMPAT_FLAGS / COMPAT_FLAGS bytes from upstream V2 are removed.)
  */
-export const MAVLINK_HEADER_LEN = 9;
+export const MAVLINK_HEADER_LEN = 7;
 
 /**
- * MAVLink V2 checksum length (CRC-16)
- * 2 bytes in little-endian format
+ * Checksum length (CRC-16, little-endian)
  */
 export const MAVLINK_CHECKSUM_LEN = 2;
 
 /**
- * Maximum payload length in MAVLink V2
- * Payload can be 0-255 bytes
+ * Maximum payload length (0-255 bytes)
  */
 export const MAVLINK_MAX_PAYLOAD_LEN = 255;
 
 /**
  * Maximum complete frame length
- * STX(1) + HEADER(9) + PAYLOAD(255) + CRC(2) = 267 bytes
+ * STX(1) + HEADER(7) + PAYLOAD(255) + CRC(2) = 265 bytes
  */
 export const MAVLINK_MAX_FRAME_LEN = 1 + MAVLINK_HEADER_LEN + MAVLINK_MAX_PAYLOAD_LEN + MAVLINK_CHECKSUM_LEN;
 
 /**
  * Minimum frame length (frame with empty payload)
- * STX(1) + HEADER(9) + PAYLOAD(0) + CRC(2) = 12 bytes
+ * STX(1) + HEADER(7) + PAYLOAD(0) + CRC(2) = 10 bytes
  */
 export const MAVLINK_MIN_FRAME_LEN = 1 + MAVLINK_HEADER_LEN + MAVLINK_CHECKSUM_LEN;
 
@@ -104,107 +103,67 @@ export const MAVLINK_MSG_ID_CONFIG_REQUEST = 10200;
 export const MAVLINK_MSG_ID_CONFIG_RESPONSE = 10201;
 
 // ============================================================================
-// EVCC (PLC Modem) Message IDs (20xxx range)
+// CRC
 // ============================================================================
-
-/** EVCC Status - overall EVCC state (2Hz) */
-export const MAVLINK_MSG_ID_EVCC_STATUS = 20001;
-
-/** EVCC AC Charging parameters (2Hz, during AC charging) */
-export const MAVLINK_MSG_ID_EVCC_CHARGING_AC = 20002;
-
-/** EVCC DC Charging parameters (2Hz, during DC charging) */
-export const MAVLINK_MSG_ID_EVCC_CHARGING_DC = 20003;
-
-/** EVCC Command (PC→Board, on-demand) */
-export const MAVLINK_MSG_ID_EVCC_COMMAND = 20100;
-
-/** EVCC EV Parameters (PC→Board, on-demand) */
-export const MAVLINK_MSG_ID_EVCC_EV_PARAMS = 20101;
-
-/** EVCC Command ACK (Board→PC, response) */
-export const MAVLINK_MSG_ID_EVCC_COMMAND_ACK = 20102;
-
-/** EVCC Config Request (PC→Board, on-demand) */
-export const MAVLINK_MSG_ID_EVCC_CONFIG_REQUEST = 20200;
-
-/** EVCC Config Response (Board→PC, response) */
-export const MAVLINK_MSG_ID_EVCC_CONFIG_RESPONSE = 20201;
-
-// ============================================================================
-// CRC Extra Values (Message Signatures)
-// ============================================================================
-
-/**
- * CRC Extra lookup map
- *
- * Each MAVLink message has a unique CRC extra value that is calculated
- * from the message structure definition. This prevents incompatible
- * implementations from communicating.
- *
- * The CRC extra is appended to the message data before calculating
- * the final CRC checksum.
- *
- * Note: These values must match exactly with the firmware implementation.
- */
-const CRC_EXTRA_MAP: Readonly<Record<number, number>> = {
-  [MAVLINK_MSG_ID_HEARTBEAT]: 142,
-  [MAVLINK_MSG_ID_CHARGER_STATUS]: 66,
-  [MAVLINK_MSG_ID_SENSOR_DATA]: 120,
-  [MAVLINK_MSG_ID_CHARGER_COMMAND]: 193,
-  [MAVLINK_MSG_ID_COMMAND_ACK]: 222,
-  [MAVLINK_MSG_ID_MANUAL_CONTROL]: 239,
-  [MAVLINK_MSG_ID_CONFIG_REQUEST]: 142,
-  [MAVLINK_MSG_ID_CONFIG_RESPONSE]: 128,
-  // EVCC (PLC Modem) messages
-  [MAVLINK_MSG_ID_EVCC_STATUS]: 171,
-  [MAVLINK_MSG_ID_EVCC_CHARGING_AC]: 92,
-  [MAVLINK_MSG_ID_EVCC_CHARGING_DC]: 203,
-  [MAVLINK_MSG_ID_EVCC_COMMAND]: 117,
-  [MAVLINK_MSG_ID_EVCC_EV_PARAMS]: 134,
-  [MAVLINK_MSG_ID_EVCC_COMMAND_ACK]: 78,
-  [MAVLINK_MSG_ID_EVCC_CONFIG_REQUEST]: 55,
-  [MAVLINK_MSG_ID_EVCC_CONFIG_RESPONSE]: 162,
-};
-
-/**
- * Get CRC extra value for a message ID
- *
- * @param msgid - MAVLink message ID
- * @returns CRC extra value, or 0 if message ID is unknown
- *
- * @example
- * ```typescript
- * const crcExtra = getCrcExtra(MAVLINK_MSG_ID_HEARTBEAT);  // Returns 142
- * ```
- */
-export function getCrcExtra(msgid: number): number {
-  return CRC_EXTRA_MAP[msgid] ?? 0;
-}
+//
+// V2 Lite uses CRC-16/MODBUS computed over the payload bytes only
+// (no header, no per-message extra seed). See `crc16.ts`. There are no
+// per-message CRC seeds in this dialect, so no extra table is needed here.
 
 // ============================================================================
 // System IDs and Component IDs
 // ============================================================================
 
 /**
- * System ID for DC Charger
+ * System ID for DC Charger (single charger ↔ multi-host topology)
  */
 export const SYSID_CHARGER = 1;
 
 /**
- * System ID for EVCC (PLC Modem)
+ * System ID — PC Android operator app
  */
-export const SYSID_EVCC = 2;
+export const SYSID_PC_ANDROID = 100;
 
 /**
- * System ID for PC (Ground Control Station)
+ * System ID — PC Windows operator app
  */
-export const SYSID_PC = 255;
+export const SYSID_PC_WINDOWS = 101;
 
 /**
- * Component ID for main component
+ * System ID — JIG tester (production / QA fixture)
  */
-export const COMPID_MAIN = 0;
+export const SYSID_JIG = 200;
+
+/**
+ * System ID — App tester (this Electron monitoring app)
+ */
+export const SYSID_APP_TESTER = 201;
+
+/**
+ * System ID — Broadcast (target all listeners)
+ */
+export const SYSID_BROADCAST = 255;
+
+/**
+ * Component ID — ALL (used by hosts that are not a charger model,
+ * or to address every component)
+ */
+export const COMPID_ALL = 0;
+
+/**
+ * Component ID — charger model: DURA
+ */
+export const COMPID_DURA = 1;
+
+/**
+ * Component ID — charger model: MOOEV
+ */
+export const COMPID_MOOEV = 2;
+
+/**
+ * Component ID — charger model: Parky
+ */
+export const COMPID_PARKY = 3;
 
 
 // ============================================================================

@@ -34,16 +34,16 @@ const samplePayload: SensorDataPayload = {
 
 describe('SENSOR_DATA Encoder/Decoder', () => {
   describe('Frame Structure', () => {
-    it('should produce correct frame length (STX+9+52+CRC=64)', () => {
+    it('should produce correct frame length (STX+7+52+CRC=62)', () => {
       const frame = encodeSensorData({ sysid: 1, compid: 0, seq: 0, ...samplePayload });
-      expect(frame.length).toBe(64);
+      expect(frame.length).toBe(62);
     });
 
     it('should have correct STX, LEN, and MSG_ID', () => {
       const frame = encodeSensorData({ sysid: 1, compid: 0, seq: 0, ...samplePayload });
-      expect(frame[0]).toBe(0xFD);       // STX
+      expect(frame[0]).toBe(0xFC);       // STX (V2 Lite)
       expect(frame[1]).toBe(52);         // LEN = 52
-      const msgid = frame[7] | (frame[8] << 8) | (frame[9] << 16);
+      const msgid = frame[5] | (frame[6] << 8) | (frame[7] << 16);
       expect(msgid).toBe(MAVLINK_MSG_ID_SENSOR_DATA);
     });
   });
@@ -51,7 +51,7 @@ describe('SENSOR_DATA Encoder/Decoder', () => {
   describe('Round-trip Encoding/Decoding', () => {
     it('should preserve data through encode → payload-slice → decode', () => {
       const frame = encodeSensorData({ sysid: 1, compid: 0, seq: 0, ...samplePayload });
-      const payload = frame.subarray(10, 10 + 52);
+      const payload = frame.subarray(8, 8 + 52);
       const decoded = decodeSensorDataPayload(payload);
 
       // float comparison with tolerance
@@ -85,7 +85,7 @@ describe('SENSOR_DATA Encoder/Decoder', () => {
         imdStopMode: 0, reserved: 0,
       };
       const frame = encodeSensorData({ sysid: 1, compid: 0, seq: 0, ...zeros });
-      const decoded = decodeSensorDataPayload(frame.subarray(10, 62));
+      const decoded = decodeSensorDataPayload(frame.subarray(8, 60));
       expect(decoded).toEqual(zeros);
     });
   });
@@ -108,7 +108,7 @@ describe('SENSOR_DATA Encoder/Decoder', () => {
     it('should handle uint16 max (65535) for dcgf fields', () => {
       const p = { ...samplePayload, dcgfFault: 0xFFFF, dcgfVolt1: 0xFFFF, dcgfVolt2: 0xFFFF };
       const frame = encodeSensorData({ sysid: 1, compid: 0, seq: 0, ...p });
-      const decoded = decodeSensorDataPayload(frame.subarray(10, 62));
+      const decoded = decodeSensorDataPayload(frame.subarray(8, 60));
       expect(decoded.dcgfFault).toBe(0xFFFF);
       expect(decoded.dcgfVolt1).toBe(0xFFFF);
       expect(decoded.dcgfVolt2).toBe(0xFFFF);
@@ -122,7 +122,7 @@ describe('SENSOR_DATA Encoder/Decoder', () => {
         meterEnergy: 0xFFFFFFFF,
       };
       const frame = encodeSensorData({ sysid: 1, compid: 0, seq: 0, ...p });
-      const decoded = decodeSensorDataPayload(frame.subarray(10, 62));
+      const decoded = decodeSensorDataPayload(frame.subarray(8, 60));
       expect(decoded.meterVoltage).toBe(0xFFFFFFFF);
       expect(decoded.meterCurrent).toBe(0xFFFFFFFF);
       expect(decoded.meterEnergy).toBe(0xFFFFFFFF);
@@ -136,7 +136,7 @@ describe('SENSOR_DATA Encoder/Decoder', () => {
         gyroZDps: -500.0,
       };
       const frame = encodeSensorData({ sysid: 1, compid: 0, seq: 0, ...p });
-      const decoded = decodeSensorDataPayload(frame.subarray(10, 62));
+      const decoded = decodeSensorDataPayload(frame.subarray(8, 60));
       expect(decoded.temperatureC).toBeCloseTo(-40.0, 5);
       expect(decoded.accelXMps2).toBeCloseTo(-9.81, 5);
       expect(decoded.gyroZDps).toBeCloseTo(-500.0, 5);
@@ -145,7 +145,7 @@ describe('SENSOR_DATA Encoder/Decoder', () => {
     it('should handle float special values (Infinity, -Infinity)', () => {
       const p = { ...samplePayload, temperatureC: Infinity, humidityPct: -Infinity };
       const frame = encodeSensorData({ sysid: 1, compid: 0, seq: 0, ...p });
-      const decoded = decodeSensorDataPayload(frame.subarray(10, 62));
+      const decoded = decodeSensorDataPayload(frame.subarray(8, 60));
       expect(decoded.temperatureC).toBe(Infinity);
       expect(decoded.humidityPct).toBe(-Infinity);
     });
@@ -153,7 +153,7 @@ describe('SENSOR_DATA Encoder/Decoder', () => {
     it('should handle float NaN', () => {
       const p = { ...samplePayload, temperatureC: NaN };
       const frame = encodeSensorData({ sysid: 1, compid: 0, seq: 0, ...p });
-      const decoded = decodeSensorDataPayload(frame.subarray(10, 62));
+      const decoded = decodeSensorDataPayload(frame.subarray(8, 60));
       expect(decoded.temperatureC).toBeNaN();
     });
   });
@@ -162,24 +162,24 @@ describe('SENSOR_DATA Encoder/Decoder', () => {
     it('should write dcgfVolt1 in LE at payload offset 34', () => {
       const p = { ...samplePayload, dcgfVolt1: 0xABCD };
       const frame = encodeSensorData({ sysid: 1, compid: 0, seq: 0, ...p });
-      expect(frame[10 + 34]).toBe(0xCD); // low byte
-      expect(frame[10 + 35]).toBe(0xAB); // high byte
+      expect(frame[8 + 34]).toBe(0xCD); // low byte
+      expect(frame[8 + 35]).toBe(0xAB); // high byte
     });
 
     it('should write meterVoltage in LE at payload offset 38', () => {
       const p = { ...samplePayload, meterVoltage: 0x12345678 };
       const frame = encodeSensorData({ sysid: 1, compid: 0, seq: 0, ...p });
-      expect(frame[10 + 38]).toBe(0x78);
-      expect(frame[10 + 39]).toBe(0x56);
-      expect(frame[10 + 40]).toBe(0x34);
-      expect(frame[10 + 41]).toBe(0x12);
+      expect(frame[8 + 38]).toBe(0x78);
+      expect(frame[8 + 39]).toBe(0x56);
+      expect(frame[8 + 40]).toBe(0x34);
+      expect(frame[8 + 41]).toBe(0x12);
     });
 
     it('should write temperatureC as LE float32 at payload offset 0', () => {
       const p = { ...samplePayload, temperatureC: 25.5 };
       const frame = encodeSensorData({ sysid: 1, compid: 0, seq: 0, ...p });
-      // 25.5f = 0x41CC0000 in IEEE 754
-      const payloadSlice = frame.subarray(10, 14);
+      // 25.5f = 0x41CC0000 in IEEE 754; payload starts at offset 8 in V2 Lite
+      const payloadSlice = frame.subarray(8, 12);
       const dv = new DataView(payloadSlice.buffer, payloadSlice.byteOffset, 4);
       expect(dv.getFloat32(0, true)).toBeCloseTo(25.5, 5);
     });

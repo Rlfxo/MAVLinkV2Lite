@@ -31,16 +31,16 @@ const sampleCommand: ChargerCommandPayload = {
 
 describe('CHARGER_COMMAND Encoder/Decoder', () => {
   describe('Frame Structure', () => {
-    it('should produce correct frame length (STX+9+3+CRC=15)', () => {
+    it('should produce correct frame length (STX+7+3+CRC=13)', () => {
       const frame = encodeChargerCommand({ sysid: 255, compid: 0, seq: 0, ...sampleCommand });
-      expect(frame.length).toBe(15);
+      expect(frame.length).toBe(13);
     });
 
     it('should have correct STX, LEN, and MSG_ID', () => {
       const frame = encodeChargerCommand({ sysid: 255, compid: 0, seq: 0, ...sampleCommand });
-      expect(frame[0]).toBe(0xFD);       // STX
+      expect(frame[0]).toBe(0xFC);       // STX (V2 Lite)
       expect(frame[1]).toBe(3);          // LEN = 3
-      const msgid = frame[7] | (frame[8] << 8) | (frame[9] << 16);
+      const msgid = frame[5] | (frame[6] << 8) | (frame[7] << 16);
       expect(msgid).toBe(MAVLINK_MSG_ID_CHARGER_COMMAND);
     });
   });
@@ -48,7 +48,7 @@ describe('CHARGER_COMMAND Encoder/Decoder', () => {
   describe('Round-trip Encoding/Decoding', () => {
     it('should preserve data through encode → payload-slice → decode', () => {
       const frame = encodeChargerCommand({ sysid: 255, compid: 0, seq: 0, ...sampleCommand });
-      const payload = frame.subarray(10, 10 + 3);
+      const payload = frame.subarray(8, 8 + 3);
       const decoded = decodeChargerCommandPayload(payload);
       expect(decoded).toEqual(sampleCommand);
     });
@@ -56,7 +56,7 @@ describe('CHARGER_COMMAND Encoder/Decoder', () => {
     it('should handle all-zero payload', () => {
       const zeros: ChargerCommandPayload = { maxPowerKw: 0, command: 0 };
       const frame = encodeChargerCommand({ sysid: 255, compid: 0, seq: 0, ...zeros });
-      const decoded = decodeChargerCommandPayload(frame.subarray(10, 13));
+      const decoded = decodeChargerCommandPayload(frame.subarray(8, 11));
       expect(decoded).toEqual(zeros);
     });
   });
@@ -79,14 +79,14 @@ describe('CHARGER_COMMAND Encoder/Decoder', () => {
     it('should handle uint8 max (255) for command', () => {
       const p: ChargerCommandPayload = { maxPowerKw: 0, command: 255 };
       const frame = encodeChargerCommand({ sysid: 255, compid: 0, seq: 0, ...p });
-      const decoded = decodeChargerCommandPayload(frame.subarray(10, 13));
+      const decoded = decodeChargerCommandPayload(frame.subarray(8, 11));
       expect(decoded.command).toBe(255);
     });
 
     it('should handle uint16 max (65535) for maxPowerKw', () => {
       const p: ChargerCommandPayload = { maxPowerKw: 0xFFFF, command: 0 };
       const frame = encodeChargerCommand({ sysid: 255, compid: 0, seq: 0, ...p });
-      const decoded = decodeChargerCommandPayload(frame.subarray(10, 13));
+      const decoded = decodeChargerCommandPayload(frame.subarray(8, 11));
       expect(decoded.maxPowerKw).toBe(0xFFFF);
     });
   });
@@ -95,9 +95,9 @@ describe('CHARGER_COMMAND Encoder/Decoder', () => {
     it('should write maxPowerKw in LE at offset 0', () => {
       const p: ChargerCommandPayload = { maxPowerKw: 0x1234, command: 0 };
       const frame = encodeChargerCommand({ sysid: 255, compid: 0, seq: 0, ...p });
-      // payload starts at offset 10
-      expect(frame[10 + 0]).toBe(0x34); // low byte
-      expect(frame[10 + 1]).toBe(0x12); // high byte
+      // payload starts at offset 8 (V2 Lite)
+      expect(frame[8 + 0]).toBe(0x34); // low byte
+      expect(frame[8 + 1]).toBe(0x12); // high byte
     });
   });
 
@@ -135,16 +135,16 @@ const sampleAck: CommandAckPayload = {
 
 describe('COMMAND_ACK Encoder/Decoder', () => {
   describe('Frame Structure', () => {
-    it('should produce correct frame length (STX+9+3+CRC=15)', () => {
+    it('should produce correct frame length (STX+7+3+CRC=13)', () => {
       const frame = encodeCommandAck({ sysid: 1, compid: 0, seq: 0, ...sampleAck });
-      expect(frame.length).toBe(15);
+      expect(frame.length).toBe(13);
     });
 
     it('should have correct STX, LEN, and MSG_ID', () => {
       const frame = encodeCommandAck({ sysid: 1, compid: 0, seq: 0, ...sampleAck });
-      expect(frame[0]).toBe(0xFD);       // STX
+      expect(frame[0]).toBe(0xFC);       // STX (V2 Lite)
       expect(frame[1]).toBe(3);          // LEN = 3
-      const msgid = frame[7] | (frame[8] << 8) | (frame[9] << 16);
+      const msgid = frame[5] | (frame[6] << 8) | (frame[7] << 16);
       expect(msgid).toBe(MAVLINK_MSG_ID_COMMAND_ACK);
     });
   });
@@ -152,7 +152,7 @@ describe('COMMAND_ACK Encoder/Decoder', () => {
   describe('Round-trip Encoding/Decoding', () => {
     it('should preserve data through encode → payload-slice → decode', () => {
       const frame = encodeCommandAck({ sysid: 1, compid: 0, seq: 0, ...sampleAck });
-      const payload = frame.subarray(10, 10 + 3);
+      const payload = frame.subarray(8, 8 + 3);
       const decoded = decodeCommandAckPayload(payload);
       expect(decoded).toEqual(sampleAck);
     });
@@ -161,7 +161,7 @@ describe('COMMAND_ACK Encoder/Decoder', () => {
       for (const result of [0, 1, 2, 3]) {
         const ack: CommandAckPayload = { targetMsgId: 10100, result };
         const frame = encodeCommandAck({ sysid: 1, compid: 0, seq: 0, ...ack });
-        const decoded = decodeCommandAckPayload(frame.subarray(10, 13));
+        const decoded = decodeCommandAckPayload(frame.subarray(8, 11));
         expect(decoded.result).toBe(result);
       }
     });
@@ -185,14 +185,14 @@ describe('COMMAND_ACK Encoder/Decoder', () => {
     it('should handle uint8 max (255) for result', () => {
       const p: CommandAckPayload = { targetMsgId: 0, result: 255 };
       const frame = encodeCommandAck({ sysid: 1, compid: 0, seq: 0, ...p });
-      const decoded = decodeCommandAckPayload(frame.subarray(10, 13));
+      const decoded = decodeCommandAckPayload(frame.subarray(8, 11));
       expect(decoded.result).toBe(255);
     });
 
     it('should handle uint16 max (65535) for targetMsgId', () => {
       const p: CommandAckPayload = { targetMsgId: 0xFFFF, result: 0 };
       const frame = encodeCommandAck({ sysid: 1, compid: 0, seq: 0, ...p });
-      const decoded = decodeCommandAckPayload(frame.subarray(10, 13));
+      const decoded = decodeCommandAckPayload(frame.subarray(8, 11));
       expect(decoded.targetMsgId).toBe(0xFFFF);
     });
   });
@@ -201,8 +201,8 @@ describe('COMMAND_ACK Encoder/Decoder', () => {
     it('should write targetMsgId in LE at offset 0', () => {
       const p: CommandAckPayload = { targetMsgId: 0x2774, result: 0 }; // 10100 = 0x2774
       const frame = encodeCommandAck({ sysid: 1, compid: 0, seq: 0, ...p });
-      expect(frame[10 + 0]).toBe(0x74); // low byte
-      expect(frame[10 + 1]).toBe(0x27); // high byte
+      expect(frame[8 + 0]).toBe(0x74); // low byte
+      expect(frame[8 + 1]).toBe(0x27); // high byte
     });
   });
 

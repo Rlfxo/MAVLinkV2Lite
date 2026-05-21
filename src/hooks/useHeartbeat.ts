@@ -3,23 +3,36 @@
  *
  * Subscribes to heartbeat events from Electron main process.
  * Updates app state on heartbeat received/sent/timeout/connection changes.
+ * Detects charger model from heartbeat COMPID.
  */
 
 import { useEffect, useRef } from 'react';
 import { useAppContext } from '../context/AppContext';
 import type { ConnectionState } from '../../electron/protocol/types';
-import { SYSID_CHARGER, SYSID_EVCC } from '../../electron/protocol/constants';
+import {
+  SYSID_CHARGER,
+  COMPID_DURA,
+  COMPID_MOOEV,
+  COMPID_PARKY,
+} from '../../electron/protocol/constants';
 import type { HeartbeatReceivedData, HeartbeatSentData } from '../types/electron';
-import type { MessageLogEntry, AppState } from '../context/appReducer';
+import type { MessageLogEntry, ChargerModel } from '../context/appReducer';
 
 let logIdCounter = 0;
 
+function compidToModel(compid: number): ChargerModel {
+  switch (compid) {
+    case COMPID_DURA:  return 'dura';
+    case COMPID_MOOEV: return 'mooev';
+    case COMPID_PARKY: return 'parky';
+    default:           return 'unknown';
+  }
+}
+
 export function useHeartbeat() {
-  const { state, dispatch } = useAppContext();
+  const { dispatch } = useAppContext();
   const dispatchRef = useRef(dispatch);
   dispatchRef.current = dispatch;
-  const detectedRef = useRef(state.detectedDevice);
-  detectedRef.current = state.detectedDevice;
 
   useEffect(() => {
     const unsubReceived = window.electron.heartbeat.onReceived((data: HeartbeatReceivedData) => {
@@ -34,14 +47,9 @@ export function useHeartbeat() {
       };
       dispatchRef.current({ type: 'ADD_MESSAGE_LOG', payload: entry });
 
-      // Device detection by sysid
-      const current = detectedRef.current;
-      if (data.sysid === SYSID_CHARGER && current !== 'charger' && current !== 'both') {
-        const next = current === 'evcc' ? 'both' : 'charger';
-        dispatchRef.current({ type: 'SET_DETECTED_DEVICE', payload: next as AppState['detectedDevice'] });
-      } else if (data.sysid === SYSID_EVCC && current !== 'evcc' && current !== 'both') {
-        const next = current === 'charger' ? 'both' : 'evcc';
-        dispatchRef.current({ type: 'SET_DETECTED_DEVICE', payload: next as AppState['detectedDevice'] });
+      // Charger model detection from COMPID on charger heartbeats
+      if (data.sysid === SYSID_CHARGER) {
+        dispatchRef.current({ type: 'SET_DETECTED_MODEL', payload: compidToModel(data.compid) });
       }
     });
 

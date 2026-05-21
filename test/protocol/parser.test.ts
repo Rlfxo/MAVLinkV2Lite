@@ -1,8 +1,9 @@
 /**
- * MAVLink Parser Unit Tests
+ * MAVLink V2 Lite Parser Unit Tests
  *
- * Tests the parser state machine implementation and verifies
- * correct parsing of MAVLink V2 frames with 2-byte HEARTBEAT.
+ * Verifies the parser state machine against the V2 Lite wire format
+ * (STX=0xFC, 7-byte header without INCOMPAT/COMPAT bytes).
+ * Frame: STX(1)+LEN(1)+SEQ(1)+SYSID(1)+COMPID(1)+MSGID(3)+PAYLOAD(n)+CRC(2)
  */
 
 import { describe, it, expect, beforeEach } from 'vitest';
@@ -12,9 +13,12 @@ import {
   MAVLINK_MSG_ID_HEARTBEAT,
   MAV_STATE,
   MAVLINK_VERSION,
+  SYSID_APP_TESTER,
+  SYSID_CHARGER,
+  COMPID_ALL,
 } from '../../electron/protocol/constants';
 
-describe('MAVLink Parser', () => {
+describe('MAVLink V2 Lite Parser', () => {
   let parser: MAVLinkParser;
 
   beforeEach(() => {
@@ -23,7 +27,7 @@ describe('MAVLink Parser', () => {
 
   describe('Basic Parsing', () => {
     it('should parse a valid HEARTBEAT frame', () => {
-      const frame = createPcHeartbeat(5, 255, 0);
+      const frame = createPcHeartbeat(5, SYSID_APP_TESTER, COMPID_ALL);
 
       let message = null;
       for (const byte of frame) {
@@ -35,52 +39,18 @@ describe('MAVLink Parser', () => {
 
       expect(message).not.toBeNull();
       expect(message!.msgid).toBe(MAVLINK_MSG_ID_HEARTBEAT);
-      expect(message!.sysid).toBe(255);
-      expect(message!.compid).toBe(0);
+      expect(message!.sysid).toBe(SYSID_APP_TESTER);
+      expect(message!.compid).toBe(COMPID_ALL);
       expect(message!.seq).toBe(5);
       expect(message!.payload.length).toBe(2);
     });
 
-    it('should parse known PC HEARTBEAT frame', () => {
-      // From PROTOCOL.md wire format example:
-      // FD 02 00 00 00 FF 00 00 00 00 03 03 19 6A
-      const knownFrame = new Uint8Array([
-        0xFD, 0x02, 0x00, 0x00, 0x00, 0xFF, 0x00, 0x00, 0x00, 0x00,
-        0x03, 0x03, 0x19, 0x6A
-      ]);
-
-      let message = null;
-      for (const byte of knownFrame) {
-        const result = parser.parseByte(byte);
-        if (result) {
-          message = result;
-        }
-      }
-
-      expect(message).not.toBeNull();
-      expect(message!.msgid).toBe(0);
-      expect(message!.sysid).toBe(255);
-      expect(message!.compid).toBe(0);
-      expect(message!.seq).toBe(0);
-      expect(message!.checksum).toBe(0x6A19);
-
-      // Verify payload
-      expect(message!.payload.length).toBe(2);
-      expect(Array.from(message!.payload)).toEqual([0x03, 0x03]);
-    });
-
-    it('should parse known Charger HEARTBEAT frame', () => {
-      // From PROTOCOL.md: SYSID=1, COMPID=0, SEQ=0, status=RUN(3), version=3
-      // CRC = 0xB985
-      const chargerFrame = new Uint8Array([
-        0xFD, 0x02, 0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00,
-        0x03, 0x03, 0x85, 0xB9
-      ]);
-
-      const messages = parser.parseBuffer(chargerFrame);
+    it('should parse Charger HEARTBEAT frame', () => {
+      const frame = createChargerHeartbeat(0, SYSID_CHARGER, COMPID_ALL);
+      const messages = parser.parseBuffer(frame);
       expect(messages.length).toBe(1);
-      expect(messages[0].sysid).toBe(1);
-      expect(messages[0].compid).toBe(0);
+      expect(messages[0].sysid).toBe(SYSID_CHARGER);
+      expect(messages[0].compid).toBe(COMPID_ALL);
     });
 
     it('should handle multiple consecutive frames', () => {
@@ -131,8 +101,8 @@ describe('MAVLink Parser', () => {
     it('should reject frame with corrupted payload', () => {
       const frame = createPcHeartbeat(0);
 
-      // Corrupt a payload byte
-      frame[10] ^= 0xFF;
+      // Corrupt the first payload byte (payload begins at offset 8 in V2 Lite)
+      frame[8] ^= 0xFF;
 
       const messages = parser.parseBuffer(frame);
 
@@ -142,18 +112,21 @@ describe('MAVLink Parser', () => {
       expect(stats.crcErrorCount).toBe(1);
     });
 
-    it('should reject frame with corrupted header', () => {
+    it('should accept frame with mutated header (CRC range is payload only)', () => {
+      // V2 Lite CRC-16/MODBUS covers only the payload, so header byte
+      // mutations (e.g. SEQ at offset 2) do NOT invalidate the frame.
+      // This documents the trade-off vs. upstream MAVLink V2 where the
+      // CRC range included the header.
       const frame = createPcHeartbeat(0);
-
-      // Corrupt sequence number
-      frame[4] = 99;
+      frame[2] = 99; // mutate SEQ
 
       const messages = parser.parseBuffer(frame);
 
-      expect(messages.length).toBe(0);
-
+      expect(messages.length).toBe(1);
+      expect(messages[0].seq).toBe(99); // parser reports the mutated value
       const stats = parser.getStats();
-      expect(stats.crcErrorCount).toBe(1);
+      expect(stats.crcErrorCount).toBe(0);
+      expect(stats.totalRxCount).toBe(1);
     });
 
     it('should continue parsing after CRC error', () => {
@@ -176,6 +149,7 @@ describe('MAVLink Parser', () => {
 
   describe('State Machine Robustness', () => {
     it('should handle garbage bytes before valid frame', () => {
+      // Pre-frame garbage must not contain 0xFC, which would trigger resync.
       const garbage = new Uint8Array([0x00, 0x11, 0x22, 0x33, 0x44]);
       const frame = createPcHeartbeat(0);
 
@@ -220,10 +194,11 @@ describe('MAVLink Parser', () => {
       expect(message!.msgid).toBe(MAVLINK_MSG_ID_HEARTBEAT);
     });
 
-    it('should reset state after invalid payload length', () => {
-      const badFrame = new Uint8Array([0xFD, 0xFF]); // LEN = 255 is valid max
-      parser.parseByte(badFrame[0]);
-      parser.parseByte(badFrame[1]);
+    it('should resync on STX after a stuck header parse', () => {
+      // Feed a stray STX + LEN, then a complete frame: the parser should resync.
+      const stuck = new Uint8Array([0xFC, 0xFF]); // STX + LEN=255 (header in progress)
+      parser.parseByte(stuck[0]);
+      parser.parseByte(stuck[1]);
 
       const goodFrame = createPcHeartbeat(0);
       const messages = parser.parseBuffer(goodFrame);
@@ -308,7 +283,7 @@ describe('MAVLink Parser', () => {
     });
 
     // Note: This test is skipped because certain sequence numbers can produce
-    // frames with 0xFD bytes in payload/CRC, which conflicts with frame
+    // frames with 0xFC bytes in payload/CRC, which conflicts with frame
     // resynchronization logic.
     it.skip('should handle sequence wraparound', () => {
       const testSeqs = [253, 254, 255, 0, 1];
@@ -328,8 +303,8 @@ describe('MAVLink Parser', () => {
     it('should clear state on reset', () => {
       const frame = createPcHeartbeat(0);
 
-      // Parse partial frame
-      for (let i = 0; i < 10; i++) {
+      // Parse partial frame (8 bytes covers STX+header, before CRC)
+      for (let i = 0; i < 8; i++) {
         parser.parseByte(frame[i]);
       }
 
@@ -365,15 +340,6 @@ describe('MAVLink Parser', () => {
 
       expect(messages.length).toBe(1);
       expect(messages[0].checksum).toBe(expectedCrc);
-    });
-
-    it('should preserve incompatibility and compatibility flags', () => {
-      const frame = createPcHeartbeat(0);
-      const messages = parser.parseBuffer(frame);
-
-      expect(messages.length).toBe(1);
-      expect(messages[0].incFlags).toBe(0);
-      expect(messages[0].cmpFlags).toBe(0);
     });
   });
 

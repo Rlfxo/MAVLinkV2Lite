@@ -10,8 +10,6 @@ import { HeartbeatManager } from '../serial/HeartbeatManager';
 import type {
   HeartbeatPayload, ChargerStatusPayload, SensorDataPayload, ChargerCommandPayload,
   CommandAckPayload, ConfigResponsePayload, MAVLinkMessage,
-  EvccStatusPayload, EvccChargingAcPayload, EvccChargingDcPayload,
-  EvccCommandPayload, EvccEvParamsPayload, EvccCommandAckPayload, EvccConfigResponsePayload,
 } from '../protocol/types';
 
 /**
@@ -160,107 +158,5 @@ export function registerHeartbeatHandlers(
         timestamp: Date.now(),
       });
     }
-  });
-
-  // ==== EVCC Events ====
-
-  heartbeatManager.on('evcc-status-received', (payload: EvccStatusPayload, message: MAVLinkMessage) => {
-    const win = getWindow();
-    if (win && !win.isDestroyed()) {
-      win.webContents.send('evcc-status:received', {
-        payload,
-        seq: message.seq,
-        sysid: message.sysid,
-        compid: message.compid,
-        timestamp: Date.now(),
-      });
-    }
-  });
-
-  heartbeatManager.on('evcc-charging-ac-received', (payload: EvccChargingAcPayload, message: MAVLinkMessage) => {
-    const win = getWindow();
-    if (win && !win.isDestroyed()) {
-      win.webContents.send('evcc-charging-ac:received', {
-        payload,
-        seq: message.seq,
-        sysid: message.sysid,
-        compid: message.compid,
-        timestamp: Date.now(),
-      });
-    }
-  });
-
-  heartbeatManager.on('evcc-charging-dc-received', (payload: EvccChargingDcPayload, message: MAVLinkMessage) => {
-    const win = getWindow();
-    if (win && !win.isDestroyed()) {
-      win.webContents.send('evcc-charging-dc:received', {
-        payload,
-        seq: message.seq,
-        sysid: message.sysid,
-        compid: message.compid,
-        timestamp: Date.now(),
-      });
-    }
-  });
-
-  heartbeatManager.on('evcc-command-sent', (payload: EvccCommandPayload, seq: number) => {
-    const win = getWindow();
-    if (win && !win.isDestroyed()) {
-      win.webContents.send('evcc-command:sent', { payload, seq, timestamp: Date.now() });
-    }
-  });
-
-  heartbeatManager.on('evcc-ev-params-sent', (payload: EvccEvParamsPayload, seq: number) => {
-    const win = getWindow();
-    if (win && !win.isDestroyed()) {
-      win.webContents.send('evcc-ev-params:sent', { payload, seq, timestamp: Date.now() });
-    }
-  });
-
-  heartbeatManager.on('evcc-command-ack-received', (payload: EvccCommandAckPayload, message: MAVLinkMessage) => {
-    const win = getWindow();
-    if (win && !win.isDestroyed()) {
-      win.webContents.send('evcc-command-ack:received', {
-        payload,
-        seq: message.seq,
-        sysid: message.sysid,
-        compid: message.compid,
-        timestamp: Date.now(),
-      });
-    }
-  });
-
-  heartbeatManager.on('evcc-config-request-sent', (seq: number) => {
-    const win = getWindow();
-    if (win && !win.isDestroyed()) {
-      win.webContents.send('evcc-config-request:sent', { seq, timestamp: Date.now() });
-    }
-  });
-
-  heartbeatManager.on('evcc-config-response-received', (payload: EvccConfigResponsePayload, message: MAVLinkMessage) => {
-    const win = getWindow();
-    if (win && !win.isDestroyed()) {
-      win.webContents.send('evcc-config-response:received', {
-        payload,
-        seq: message.seq,
-        sysid: message.sysid,
-        compid: message.compid,
-        timestamp: Date.now(),
-      });
-    }
-  });
-
-  // ==== EVCC Command IPC Handlers ====
-
-  ipcMain.handle('evcc:send-command', (_event, payload: EvccCommandPayload) => {
-    heartbeatManager.sendEvccCommand(payload);
-  });
-
-  ipcMain.handle('evcc:send-ev-params', (_event, payload: EvccEvParamsPayload) => {
-    heartbeatManager.sendEvccEvParams(payload);
-  });
-
-  ipcMain.handle('evcc:send-config-request', () => {
-    heartbeatManager.sendEvccConfigRequest();
   });
 }

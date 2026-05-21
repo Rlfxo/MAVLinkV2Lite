@@ -14,13 +14,6 @@ import type {
   ConfigResponsePayload,
   HeartbeatStatus,
   ParserStats,
-  EvccStatusPayload,
-  EvccChargingAcPayload,
-  EvccChargingDcPayload,
-  EvccCommandPayload,
-  EvccEvParamsPayload,
-  EvccCommandAckPayload,
-  EvccConfigResponsePayload,
 } from '../../electron/protocol/types';
 import type { SerialStatus } from '../../electron/serial/SerialPortManager';
 
@@ -80,58 +73,6 @@ export interface ConfigResponseReceivedData {
   timestamp: number;
 }
 
-// EVCC data types
-export interface EvccStatusReceivedData {
-  payload: EvccStatusPayload;
-  seq: number;
-  sysid: number;
-  compid: number;
-  timestamp: number;
-}
-
-export interface EvccChargingAcReceivedData {
-  payload: EvccChargingAcPayload;
-  seq: number;
-  sysid: number;
-  compid: number;
-  timestamp: number;
-}
-
-export interface EvccChargingDcReceivedData {
-  payload: EvccChargingDcPayload;
-  seq: number;
-  sysid: number;
-  compid: number;
-  timestamp: number;
-}
-
-export interface EvccCommandSentData {
-  payload: EvccCommandPayload;
-  seq: number;
-  timestamp: number;
-}
-
-export interface EvccCommandAckReceivedData {
-  payload: EvccCommandAckPayload;
-  seq: number;
-  sysid: number;
-  compid: number;
-  timestamp: number;
-}
-
-export interface EvccConfigRequestSentData {
-  seq: number;
-  timestamp: number;
-}
-
-export interface EvccConfigResponseReceivedData {
-  payload: EvccConfigResponsePayload;
-  seq: number;
-  sysid: number;
-  compid: number;
-  timestamp: number;
-}
-
 export interface ElectronAPI {
   serial: {
     listPorts(): Promise<PortInfo[]>;
@@ -167,31 +108,6 @@ export interface ElectronAPI {
     sendRequest(): Promise<void>;
     onRequestSent(callback: (data: ConfigRequestSentData) => void): () => void;
     onResponseReceived(callback: (data: ConfigResponseReceivedData) => void): () => void;
-  };
-  // EVCC APIs
-  evccStatus: {
-    onReceived(callback: (data: EvccStatusReceivedData) => void): () => void;
-  };
-  evccChargingAc: {
-    onReceived(callback: (data: EvccChargingAcReceivedData) => void): () => void;
-  };
-  evccChargingDc: {
-    onReceived(callback: (data: EvccChargingDcReceivedData) => void): () => void;
-  };
-  evccCommand: {
-    send(payload: EvccCommandPayload): Promise<void>;
-    onSent(callback: (data: EvccCommandSentData) => void): () => void;
-  };
-  evccEvParams: {
-    send(payload: EvccEvParamsPayload): Promise<void>;
-  };
-  evccCommandAck: {
-    onReceived(callback: (data: EvccCommandAckReceivedData) => void): () => void;
-  };
-  evccConfig: {
-    sendRequest(): Promise<void>;
-    onRequestSent(callback: (data: EvccConfigRequestSentData) => void): () => void;
-    onResponseReceived(callback: (data: EvccConfigResponseReceivedData) => void): () => void;
   };
 }
 

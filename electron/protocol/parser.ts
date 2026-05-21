@@ -7,11 +7,8 @@
 
 import { crc16Init, crc16Accumulate } from './crc16';
 import {
-  MAVLINK_STX_V2,
-  MAVLINK_HEADER_LEN,
-  MAVLINK_CHECKSUM_LEN,
+  MAVLINK_STX_V2_Lite,
   MAVLINK_MAX_PAYLOAD_LEN,
-  getCrcExtra
 } from './constants';
 import {
   MAVLinkMessage,
@@ -45,8 +42,6 @@ export class MAVLinkParser {
 
   // Current frame being parsed
   private payloadLen: number = 0;
-  private incFlags: number = 0;
-  private cmpFlags: number = 0;
   private seq: number = 0;
   private sysid: number = 0;
   private compid: number = 0;
@@ -74,15 +69,13 @@ export class MAVLinkParser {
   public parseByte(byte: number): MAVLinkMessage | null {
     // Frame resynchronization: Only in early parsing stages (before payload/CRC)
     // If we receive STX in header parsing states, assume a new frame is starting
-    // Note: We don't resync during payload or CRC states because 0xFD can appear
+    // Note: We don't resync during payload or CRC states because 0xFC can appear
     // legitimately in those fields
-    if (byte === MAVLINK_STX_V2 && this.state !== ParseState.IDLE) {
+    if (byte === MAVLINK_STX_V2_Lite && this.state !== ParseState.IDLE) {
       // Only resync in header states (not in payload/CRC states)
       const headerStates = [
         ParseState.GOT_STX,
         ParseState.GOT_LEN,
-        ParseState.GOT_INCOMPAT,
-        ParseState.GOT_COMPAT,
         ParseState.GOT_SEQ,
         ParseState.GOT_SYSID,
         ParseState.GOT_COMPID,
@@ -101,7 +94,7 @@ export class MAVLinkParser {
     // State machine
     switch (this.state) {
       case ParseState.IDLE:
-        if (byte === MAVLINK_STX_V2) {
+        if (byte === MAVLINK_STX_V2_Lite) {
           this.state = ParseState.GOT_STX;
         }
         break;
@@ -116,72 +109,52 @@ export class MAVLinkParser {
           break;
         }
 
-        // Start CRC calculation (include LEN)
+        // CRC-16/MODBUS is computed over payload only — initialize now
+        // and start accumulating once the first payload byte arrives.
         this.crc = crc16Init();
-        this.crc = crc16Accumulate(this.crc, byte);
 
         this.state = ParseState.GOT_LEN;
         break;
 
       case ParseState.GOT_LEN:
-        // Incompatibility flags
-        this.incFlags = byte;
-        this.crc = crc16Accumulate(this.crc, byte);
-        this.state = ParseState.GOT_INCOMPAT;
-        break;
-
-      case ParseState.GOT_INCOMPAT:
-        // Compatibility flags
-        this.cmpFlags = byte;
-        this.crc = crc16Accumulate(this.crc, byte);
-        this.state = ParseState.GOT_COMPAT;
-        break;
-
-      case ParseState.GOT_COMPAT:
-        // Sequence number
+        // Sequence number (not part of CRC range)
         this.seq = byte;
-        this.crc = crc16Accumulate(this.crc, byte);
         this.state = ParseState.GOT_SEQ;
         break;
 
       case ParseState.GOT_SEQ:
-        // System ID
+        // System ID (not part of CRC range)
         this.sysid = byte;
-        this.crc = crc16Accumulate(this.crc, byte);
         this.state = ParseState.GOT_SYSID;
         break;
 
       case ParseState.GOT_SYSID:
-        // Component ID
+        // Component ID (not part of CRC range)
         this.compid = byte;
-        this.crc = crc16Accumulate(this.crc, byte);
         this.state = ParseState.GOT_COMPID;
         break;
 
       case ParseState.GOT_COMPID:
-        // Message ID byte 1 (low)
+        // Message ID byte 1 (low) — not part of CRC range
         this.msgid = byte;
-        this.crc = crc16Accumulate(this.crc, byte);
         this.state = ParseState.GOT_MSGID1;
         break;
 
       case ParseState.GOT_MSGID1:
-        // Message ID byte 2 (mid)
+        // Message ID byte 2 (mid) — not part of CRC range
         this.msgid |= byte << 8;
-        this.crc = crc16Accumulate(this.crc, byte);
         this.state = ParseState.GOT_MSGID2;
         break;
 
       case ParseState.GOT_MSGID2:
-        // Message ID byte 3 (high)
+        // Message ID byte 3 (high) — not part of CRC range
         this.msgid |= byte << 16;
-        this.crc = crc16Accumulate(this.crc, byte);
 
         // Prepare for payload
         this.payloadIndex = 0;
 
         if (this.payloadLen === 0) {
-          // No payload, go directly to CRC
+          // No payload — CRC is the MODBUS initial value 0xFFFF
           this.state = ParseState.GOT_PAYLOAD;
         } else {
           this.state = ParseState.GOT_MSGID3;
@@ -189,7 +162,7 @@ export class MAVLinkParser {
         break;
 
       case ParseState.GOT_MSGID3:
-        // Payload bytes
+        // Payload bytes (these are the only bytes covered by CRC)
         this.payload[this.payloadIndex++] = byte;
         this.crc = crc16Accumulate(this.crc, byte);
 
@@ -200,11 +173,7 @@ export class MAVLinkParser {
         break;
 
       case ParseState.GOT_PAYLOAD:
-        // Accumulate CRC extra before receiving CRC bytes
-        const crcExtra = getCrcExtra(this.msgid);
-        this.crc = crc16Accumulate(this.crc, crcExtra);
-
-        // CRC byte 1 (low)
+        // First CRC byte (low) — payload accumulation is complete; no extra seed.
         this.receivedCrc = byte;
         this.state = ParseState.GOT_CRC1;
         break;
@@ -267,8 +236,6 @@ export class MAVLinkParser {
   public reset(): void {
     this.state = ParseState.IDLE;
     this.payloadLen = 0;
-    this.incFlags = 0;
-    this.cmpFlags = 0;
     this.seq = 0;
     this.sysid = 0;
     this.compid = 0;
@@ -315,8 +282,6 @@ export class MAVLinkParser {
       sysid: this.sysid,
       compid: this.compid,
       msgid: this.msgid,
-      incFlags: this.incFlags,
-      cmpFlags: this.cmpFlags,
       payload,
       checksum: this.receivedCrc,
       timestamp: Date.now(),

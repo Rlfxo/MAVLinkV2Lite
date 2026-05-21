@@ -75,7 +75,7 @@ export interface SerialStatus {
  * });
  *
  * // Send data
- * manager.write(new Uint8Array([0xFD, 0x09, ...]));
+ * manager.write(new Uint8Array([0xFC, 0x07, ...]));
  *
  * // Disconnect
  * await manager.disconnect();

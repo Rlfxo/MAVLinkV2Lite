@@ -10,9 +10,9 @@
 // ============================================================================
 
 /**
- * MAVLink V2 Message
+ * MAVLink V2 Lite Message
  *
- * Represents a complete parsed MAVLink message with all header fields
+ * Represents a complete parsed MAVLink V2 Lite message with all header fields
  * and payload data.
  */
 export interface MAVLinkMessage {
@@ -28,12 +28,6 @@ export interface MAVLinkMessage {
   /** Message ID (0-16777215, 24-bit) */
   msgid: number;
 
-  /** Incompatibility flags (reserved for future use) */
-  incFlags: number;
-
-  /** Compatibility flags (reserved for future use) */
-  cmpFlags: number;
-
   /** Message payload data */
   payload: Uint8Array;
 
@@ -45,22 +39,16 @@ export interface MAVLinkMessage {
 }
 
 /**
- * MAVLink Message Header (without payload)
+ * MAVLink V2 Lite Message Header (without payload)
  *
  * Contains only the header information, useful for debugging and logging.
  */
 export interface MAVLinkHeader {
-  /** Start-of-frame marker (should be 0xFD for MAVLink V2) */
+  /** Start-of-frame marker (0xFC for MAVLink V2 Lite) */
   stx: number;
 
   /** Payload length (0-255) */
   len: number;
-
-  /** Incompatibility flags */
-  incFlags: number;
-
-  /** Compatibility flags */
-  cmpFlags: number;
 
   /** Packet sequence number */
   seq: number;
@@ -108,8 +96,8 @@ export interface HeartbeatPayload {
  * Payload size: 16 bytes (Phase 3)
  */
 export interface ChargerStatusPayload {
-  discharging: number;   // uint8_t - SECC state (0=off, 1~255)
-  recharging: number;    // uint8_t - EVCC state (0=off, 1~255)
+  discharging: number;   // uint8_t - discharge state (0=off, 1~255)
+  recharging: number;    // uint8_t - recharge state (0=off, 1~255)
   bmsVendor: number;     // uint8_t - BMS vendor enum
   bmsCap: number;        // uint16_t - BMS capacity (kWh)
   outCap: number;        // uint8_t - Output converter max capacity (kW)
@@ -239,154 +227,13 @@ export interface ManualControlPayload {
 }
 
 // ============================================================================
-// EVCC (PLC Modem) Message Types (20xxx range)
-// ============================================================================
-
-/**
- * EVCC Step (state machine)
- */
-export enum EvccStep {
-  READY = 0,
-  INIT = 1,
-  FIRST_PLUGIN = 2,
-  SLAC_START = 3,
-  SLAC_MATCHING = 4,
-  SLAC_MATCHED = 5,
-  SDP_CLIENT = 6,
-  V2G_CLIENT = 7,
-  SESSION_SETUP = 8,
-  CHARGING = 9,
-  SESSION_STOP = 10,
-  FAILED = 11,
-}
-
-/**
- * EVCC Command Types
- */
-export enum EvccCommandType {
-  START_SLAC = 1,
-  STOP_SLAC = 2,
-  START_V2G = 5,
-  STOP_V2G = 6,
-  PAUSE_V2G = 7,
-  SET_CP_A = 10,
-  SET_CP_B = 11,
-  SET_CP_C = 12,
-  SET_MODE_AC = 20,
-  SET_MODE_DC = 21,
-  RESUME_V2G = 22,
-  CLEAR_V2G_CTX = 23,
-}
-
-/**
- * EVCC_STATUS (20001) - 16 bytes
- */
-export interface EvccStatusPayload {
-  evccStep: number;          // uint8 - EvccStep enum
-  evccState: number;         // uint8 - 0=IDLE, 1=REQ, 2=RES, 3=TOUT
-  chargeMode: number;        // uint8 - 0=AC, 1=DC
-  cpState: number;           // uint8 - CP_A/B/C/D/EF
-  cpDuty: number;            // uint8 - EVSE PWM duty (0-100%)
-  cpPwmValid: number;        // uint8 - PWM capture valid
-  cpVoltageMv: number;       // uint16 - CP voltage (mV)
-  slacState: number;         // uint8 - pev_slac_state_e (0-7)
-  slacResult: number;        // uint8
-  slacRetryCnt: number;      // uint8
-  sdpState: number;          // uint8 - sdp_client_state_e (0-5)
-  v2gState: number;          // uint8 - v2g_client_state_e (0-20)
-  v2gProtocol: number;       // uint8 - 0=unknown, 1=ISO, 2=DIN
-  sessionResumable: number;  // uint8 - has saved V2G context
-  reserved: number;          // uint8
-}
-
-/**
- * EVCC_CHARGING_AC (20002) - 14 bytes
- */
-export interface EvccChargingAcPayload {
-  evseMaxCurrentA: number;       // int16
-  evseNominalVoltageV: number;   // int16
-  evseMaxPowerW: number;         // int32
-  evMaxCurrentA: number;         // int16
-  evMaxVoltageV: number;         // int16
-  chargingComplete: number;      // uint8
-  reserved: number;              // uint8
-}
-
-/**
- * EVCC_CHARGING_DC (20003) - 28 bytes
- */
-export interface EvccChargingDcPayload {
-  evSoc: number;                  // uint8 - Battery SoC (0-100%)
-  evReady: number;                // uint8
-  evTargetVoltageV: number;       // int16
-  evTargetCurrentA: number;       // int16
-  evsePresentVoltageV: number;    // int16
-  evsePresentCurrentA: number;    // int16
-  evseMaxVoltageV: number;        // int16
-  evseMaxCurrentA: number;        // int16
-  evseMaxPowerW: number;          // int32
-  evEnergyCapacityWh: number;     // int32
-  chargingComplete: number;       // uint8
-  evseIsolationStatus: number;    // uint8
-  evseStatusCode: number;         // uint8
-  reserved: number;               // uint8
-}
-
-/**
- * EVCC_COMMAND (20100) - 2 bytes
- */
-export interface EvccCommandPayload {
-  command: number;   // uint8 - EvccCommandType
-  param: number;     // uint8
-}
-
-/**
- * EVCC_EV_PARAMS (20101) - 16 bytes
- */
-export interface EvccEvParamsPayload {
-  evReady: number;            // uint8
-  evSoc: number;              // uint8
-  evMaxVoltageV: number;      // int16
-  evMaxCurrentA: number;      // int16
-  evMaxPowerW: number;        // int32
-  evTargetVoltageV: number;   // int16
-  evTargetCurrentA: number;   // int16
-}
-
-/**
- * EVCC COMMAND_ACK (20102) - 3 bytes
- */
-export interface EvccCommandAckPayload {
-  command: number;   // uint8
-  result: number;    // uint8 - 0=OK, 1=FAIL, 2=UNSUPPORTED
-  reserved: number;  // uint8
-}
-
-/**
- * EVCC CONFIG_RESPONSE (20201) - 36 bytes
- */
-export interface EvccConfigResponsePayload {
-  fwVersionMajor: number;    // uint8
-  fwVersionMinor: number;    // uint8
-  fwVersionPatch: number;    // uint8
-  chargeMode: number;        // uint8 - 0=AC, 1=DC
-  fwBuildYear: number;       // uint16
-  fwBuildMonth: number;      // uint8
-  fwBuildDay: number;        // uint8
-  macAddress: Uint8Array;    // 6 bytes
-  evseMac: Uint8Array;       // 6 bytes
-  seccIp: Uint8Array;        // 16 bytes
-  seccPort: number;          // uint16
-}
-
-// ============================================================================
 // Parser and Statistics Types
 // ============================================================================
 
 /**
- * MAVLink Parser State
+ * MAVLink V2 Lite Parser State
  *
- * Internal state machine states for the MAVLink parser.
+ * Internal state machine states for the parser.
  */
 export enum ParseState {
   /** Waiting for start-of-frame marker */
@@ -395,38 +242,32 @@ export enum ParseState {
   /** Received STX, waiting for length */
   GOT_STX = 1,
 
-  /** Received length, waiting for incompatibility flags */
+  /** Received length, waiting for sequence */
   GOT_LEN = 2,
 
-  /** Received incompatibility flags, waiting for compatibility flags */
-  GOT_INCOMPAT = 3,
-
-  /** Received compatibility flags, waiting for sequence */
-  GOT_COMPAT = 4,
-
   /** Received sequence, waiting for system ID */
-  GOT_SEQ = 5,
+  GOT_SEQ = 3,
 
   /** Received system ID, waiting for component ID */
-  GOT_SYSID = 6,
+  GOT_SYSID = 4,
 
   /** Received component ID, waiting for message ID byte 1 */
-  GOT_COMPID = 7,
+  GOT_COMPID = 5,
 
   /** Received message ID byte 1, waiting for byte 2 */
-  GOT_MSGID1 = 8,
+  GOT_MSGID1 = 6,
 
   /** Received message ID byte 2, waiting for byte 3 */
-  GOT_MSGID2 = 9,
+  GOT_MSGID2 = 7,
 
   /** Received message ID byte 3, waiting for payload */
-  GOT_MSGID3 = 10,
+  GOT_MSGID3 = 8,
 
   /** Receiving payload bytes */
-  GOT_PAYLOAD = 11,
+  GOT_PAYLOAD = 9,
 
   /** Received all payload, waiting for CRC byte 1 */
-  GOT_CRC1 = 12,
+  GOT_CRC1 = 10,
 }
 
 /**
