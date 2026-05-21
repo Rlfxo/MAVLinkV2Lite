@@ -12,6 +12,7 @@ import { StatisticsPanel } from './components/StatisticsPanel';
 import { MessageLog } from './components/MessageLog';
 import { ChargerStatusPanel } from './components/ChargerStatusPanel';
 import { SensorDataPanel } from './components/SensorDataPanel';
+import { MeterDataPanel } from './components/MeterDataPanel';
 import { ChargerCommandPanel } from './components/ChargerCommandPanel';
 import { ConfigPanel } from './components/ConfigPanel';
 import { useHeartbeat } from './hooks/useHeartbeat';
@@ -90,6 +91,7 @@ export default function App() {
         {activeModel === 'dura' && (
           <div className="data-row">
             <ChargerStatusPanel />
+            <MeterDataPanel />
             <SensorDataPanel />
             <ChargerCommandPanel />
             <ConfigPanel />

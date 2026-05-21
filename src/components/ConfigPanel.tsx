@@ -1,15 +1,14 @@
 /**
  * Config Panel
  *
- * Sends CONFIG_REQUEST (MSG_ID: 10200) to DC Charger.
- * Displays CONFIG_RESPONSE (MSG_ID: 10201) firmware/hardware info.
+ * Sends CONFIG_REQUEST (MSG_ID: 10200, with uuid) to DC Charger and
+ * displays the latest CONFIG_RESPONSE (MSG_ID: 10201). Shows the
+ * pending uuid while waiting for the reply.
  */
 
 import { useAppContext } from '../context/AppContext';
 
-/**
- * Parse packed version u32 (0x00XXYYZZ) to "XX.YY.ZZ" string
- */
+/** Parse packed version u32 (0x00XXYYZZ) → "XX.YY.ZZ" */
 function formatVersion(v: number): string {
   const major = (v >> 16) & 0xFF;
   const minor = (v >> 8) & 0xFF;
@@ -18,12 +17,18 @@ function formatVersion(v: number): string {
 }
 
 export function ConfigPanel() {
-  const { state } = useAppContext();
+  const { state, dispatch } = useAppContext();
 
   const isSynchronized = state.connectionState === 'synchronized';
+  const isPending = state.pendingConfigUuid != null;
 
   const handleRequest = async () => {
-    await window.electron.config.sendRequest();
+    try {
+      const uuid = await window.electron.config.sendRequest();
+      dispatch({ type: 'SET_PENDING_CONFIG_UUID', payload: uuid });
+    } catch {
+      dispatch({ type: 'SET_PENDING_CONFIG_UUID', payload: null });
+    }
   };
 
   const cfg = state.lastConfigResponse;
@@ -34,12 +39,16 @@ export function ConfigPanel() {
       <button
         className="btn btn-primary"
         onClick={handleRequest}
-        disabled={!isSynchronized}
+        disabled={!isSynchronized || isPending}
       >
-        Request Config
+        {isPending ? `Requesting (uuid=${state.pendingConfigUuid})…` : 'Request Config'}
       </button>
       <table className="info-table config-table">
         <tbody>
+          <tr>
+            <td>uuid</td>
+            <td>{cfg ? cfg.uuid : '-'}</td>
+          </tr>
           <tr>
             <td>FW Version</td>
             <td>{cfg ? formatVersion(cfg.fwVersion) : '-'}</td>

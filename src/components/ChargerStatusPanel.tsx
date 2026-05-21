@@ -1,33 +1,69 @@
 /**
  * Charger Status Panel
  *
- * Displays the latest CHARGER_STATUS (MSG_ID: 10001) data.
+ * Displays the latest CHARGER_STATUS (MSG_ID: 10001) data — 10 B slim.
+ * High-level state + relay topology + uptime + storage SOC.
+ * Measurements live in MeterDataPanel / SensorDataPanel.
  */
 
 import { useAppContext } from '../context/AppContext';
+import { MAV_STATE } from '../../electron/protocol/constants';
+
+const STATE_LABELS: Record<number, string> = {
+  [MAV_STATE.UNINIT]:   'UNINIT',
+  [MAV_STATE.BOOT]:     'BOOT',
+  [MAV_STATE.STANDBY]:  'STANDBY',
+  [MAV_STATE.RUN]:      'RUN',
+  [MAV_STATE.ERROR]:    'ERROR',
+  [MAV_STATE.SHUTDOWN]: 'SHUTDOWN',
+  [MAV_STATE.FW_OTA]:   'FW_OTA',
+  [MAV_STATE.PLC_OTA]:  'PLC_OTA',
+};
+
+function formatUptime(sec: number): string {
+  const h = Math.floor(sec / 3600);
+  const m = Math.floor((sec % 3600) / 60);
+  const s = sec % 60;
+  if (h > 0) return `${h}h ${m}m ${s}s`;
+  if (m > 0) return `${m}m ${s}s`;
+  return `${s}s`;
+}
+
+function formatRelayBitmap(bitmap: number): string {
+  const hex = `0x${bitmap.toString(16).toUpperCase().padStart(8, '0')}`;
+  const set: string[] = [];
+  for (let i = 0; i < 16; i++) {
+    if (bitmap & (1 << i)) set.push(`RY${i + 1}`);
+  }
+  if (bitmap & (1 << 16)) set.push('MC');
+  return set.length > 0 ? `${hex} (${set.join(', ')})` : hex;
+}
 
 export function ChargerStatusPanel() {
   const { state } = useAppContext();
   const cs = state.lastChargerStatus;
-
-  const fmt = (v: number | undefined | null) => v != null ? String(v) : '-';
-  const fmtHex = (v: number | undefined | null) =>
-    v != null ? `0x${v.toString(16).toUpperCase().padStart(8, '0')}` : '-';
 
   return (
     <div className="panel">
       <h2>Charger Status</h2>
       <table className="info-table">
         <tbody>
-          <tr><td>Discharging</td><td>{fmt(cs?.discharging)}</td></tr>
-          <tr><td>Recharging</td><td>{fmt(cs?.recharging)}</td></tr>
-          <tr><td>BMS Vendor</td><td>{fmt(cs?.bmsVendor)}</td></tr>
-          <tr><td>BMS Cap</td><td>{cs != null ? `${cs.bmsCap} kWh` : '-'}</td></tr>
-          <tr><td>Out Cap</td><td>{cs != null ? `${cs.outCap} kW` : '-'}</td></tr>
-          <tr><td>BMS SoC</td><td>{cs != null ? `${cs.bmsSoc}%` : '-'}</td></tr>
-          <tr><td>Diagnosis</td><td>{fmtHex(cs?.diagnosis)}</td></tr>
-          <tr><td>Relay</td><td>{fmtHex(cs?.relayBitmap)}</td></tr>
-          <tr><td>Uptime</td><td>{cs != null ? `${cs.uptimeSec}s` : '-'}</td></tr>
+          <tr>
+            <td>State</td>
+            <td>{cs != null ? (STATE_LABELS[cs.state] ?? `Unknown(${cs.state})`) : '-'}</td>
+          </tr>
+          <tr>
+            <td>Relay</td>
+            <td>{cs != null ? formatRelayBitmap(cs.relayBitmap) : '-'}</td>
+          </tr>
+          <tr>
+            <td>Uptime</td>
+            <td>{cs != null ? formatUptime(cs.uptimeSec) : '-'}</td>
+          </tr>
+          <tr>
+            <td>Storage SoC</td>
+            <td>{cs != null ? (cs.storageSoc === 0 ? '— (N/A)' : `${cs.storageSoc}%`) : '-'}</td>
+          </tr>
         </tbody>
       </table>
     </div>

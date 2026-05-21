@@ -12,6 +12,7 @@ import type {
   ConnectionState,
   ChargerStatusPayload,
   SensorDataPayload,
+  MeterDataPayload,
   CommandAckPayload,
   ConfigResponsePayload,
 } from '../../electron/protocol/types';
@@ -57,11 +58,15 @@ export interface AppState {
   lastChargerStatusTime: number | null;
   lastSensorData: SensorDataPayload | null;
   lastSensorDataTime: number | null;
+  lastMeterData: MeterDataPayload | null;
+  lastMeterDataTime: number | null;
   lastCommandAck: CommandAckPayload | null;
   lastCommandAckTime: number | null;
   isSendingCommand: boolean;
+  pendingCommandUuid: number | null;
   lastConfigResponse: ConfigResponsePayload | null;
   lastConfigResponseTime: number | null;
+  pendingConfigUuid: number | null;
   detectedModel: ChargerModel;
   activeModel: ActiveModel;
 }
@@ -78,9 +83,11 @@ export type AppAction =
   | { type: 'SET_CONNECTING'; payload: boolean }
   | { type: 'SET_CHARGER_STATUS'; payload: ChargerStatusPayload }
   | { type: 'SET_SENSOR_DATA'; payload: SensorDataPayload }
+  | { type: 'SET_METER_DATA'; payload: MeterDataPayload }
   | { type: 'SET_COMMAND_ACK'; payload: CommandAckPayload }
-  | { type: 'SET_SENDING_COMMAND'; payload: boolean }
+  | { type: 'SET_SENDING_COMMAND'; payload: { sending: boolean; uuid?: number } }
   | { type: 'SET_CONFIG_RESPONSE'; payload: ConfigResponsePayload }
+  | { type: 'SET_PENDING_CONFIG_UUID'; payload: number | null }
   | { type: 'SET_DETECTED_MODEL'; payload: ChargerModel }
   | { type: 'SET_ACTIVE_MODEL'; payload: ActiveModel }
   | { type: 'CLEAR_LOG' }
@@ -102,11 +109,15 @@ export const initialState: AppState = {
   lastChargerStatusTime: null,
   lastSensorData: null,
   lastSensorDataTime: null,
+  lastMeterData: null,
+  lastMeterDataTime: null,
   lastCommandAck: null,
   lastCommandAckTime: null,
   isSendingCommand: false,
+  pendingCommandUuid: null,
   lastConfigResponse: null,
   lastConfigResponseTime: null,
+  pendingConfigUuid: null,
   detectedModel: 'none',
   activeModel: 'dura',
 };
@@ -151,14 +162,46 @@ export function appReducer(state: AppState, action: AppAction): AppState {
     case 'SET_SENSOR_DATA':
       return { ...state, lastSensorData: action.payload, lastSensorDataTime: Date.now() };
 
+    case 'SET_METER_DATA':
+      return { ...state, lastMeterData: action.payload, lastMeterDataTime: Date.now() };
+
     case 'SET_COMMAND_ACK':
-      return { ...state, lastCommandAck: action.payload, lastCommandAckTime: Date.now(), isSendingCommand: false };
+      // Clear pending only when the ACK uuid matches what we sent (handles
+      // stray/duplicate ACKs cleanly). If we have no pending, accept anyway.
+      return {
+        ...state,
+        lastCommandAck: action.payload,
+        lastCommandAckTime: Date.now(),
+        isSendingCommand:
+          state.pendingCommandUuid !== null && action.payload.uuid !== state.pendingCommandUuid
+            ? state.isSendingCommand
+            : false,
+        pendingCommandUuid:
+          state.pendingCommandUuid !== null && action.payload.uuid !== state.pendingCommandUuid
+            ? state.pendingCommandUuid
+            : null,
+      };
 
     case 'SET_SENDING_COMMAND':
-      return { ...state, isSendingCommand: action.payload };
+      return {
+        ...state,
+        isSendingCommand: action.payload.sending,
+        pendingCommandUuid: action.payload.sending ? (action.payload.uuid ?? null) : null,
+      };
 
     case 'SET_CONFIG_RESPONSE':
-      return { ...state, lastConfigResponse: action.payload, lastConfigResponseTime: Date.now() };
+      return {
+        ...state,
+        lastConfigResponse: action.payload,
+        lastConfigResponseTime: Date.now(),
+        pendingConfigUuid:
+          state.pendingConfigUuid !== null && action.payload.uuid !== state.pendingConfigUuid
+            ? state.pendingConfigUuid
+            : null,
+      };
+
+    case 'SET_PENDING_CONFIG_UUID':
+      return { ...state, pendingConfigUuid: action.payload };
 
     case 'SET_DETECTED_MODEL':
       return { ...state, detectedModel: action.payload };

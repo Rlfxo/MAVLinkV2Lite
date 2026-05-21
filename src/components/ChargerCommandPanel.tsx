@@ -1,8 +1,10 @@
 /**
  * Charger Command Panel
  *
- * Sends CHARGER_COMMAND (MSG_ID: 10100) to DC Charger.
- * Displays last COMMAND_ACK result.
+ * Sends CHARGER_COMMAND (MSG_ID: 10100) to DC Charger and displays the
+ * latest COMMAND_ACK. The uuid is allocated by the main process and
+ * returned from the IPC call — used to match the ACK and to display
+ * both values in the UI.
  */
 
 import { useState } from 'react';
@@ -16,16 +18,16 @@ const COMMAND_LABELS: Record<number, string> = {
 };
 
 const RESULT_LABELS: Record<number, string> = {
-  [CommandResult.ACCEPTED]: 'ACCEPTED',
-  [CommandResult.DENIED]: 'DENIED',
-  [CommandResult.ERROR]: 'ERROR',
+  [CommandResult.ACCEPTED]:    'ACCEPTED',
+  [CommandResult.DENIED]:      'DENIED',
+  [CommandResult.ERROR]:       'ERROR',
   [CommandResult.UNSUPPORTED]: 'UNSUPPORTED',
 };
 
 const RESULT_CLASSES: Record<number, string> = {
-  [CommandResult.ACCEPTED]: 'ack-accepted',
-  [CommandResult.DENIED]: 'ack-denied',
-  [CommandResult.ERROR]: 'ack-error',
+  [CommandResult.ACCEPTED]:    'ack-accepted',
+  [CommandResult.DENIED]:      'ack-denied',
+  [CommandResult.ERROR]:       'ack-error',
   [CommandResult.UNSUPPORTED]: 'ack-warning',
 };
 
@@ -38,11 +40,14 @@ export function ChargerCommandPanel() {
   const disabled = !isSynchronized || state.isSendingCommand;
 
   const handleSend = async () => {
-    dispatch({ type: 'SET_SENDING_COMMAND', payload: true });
+    // Tentatively mark as sending; the IPC resolves with the allocated uuid.
+    dispatch({ type: 'SET_SENDING_COMMAND', payload: { sending: true } });
     try {
-      await window.electron.chargerCommand.send({ maxPowerKw, command });
+      const uuid = await window.electron.chargerCommand.send({ maxPowerKw, command });
+      // Record the uuid so SET_COMMAND_ACK can correlate.
+      dispatch({ type: 'SET_SENDING_COMMAND', payload: { sending: true, uuid } });
     } catch {
-      dispatch({ type: 'SET_SENDING_COMMAND', payload: false });
+      dispatch({ type: 'SET_SENDING_COMMAND', payload: { sending: false } });
     }
   };
 
@@ -84,14 +89,16 @@ export function ChargerCommandPanel() {
           onClick={handleSend}
           disabled={disabled}
         >
-          {state.isSendingCommand ? 'Sending...' : 'Send Command'}
+          {state.isSendingCommand
+            ? `Sending${state.pendingCommandUuid != null ? ` (uuid=${state.pendingCommandUuid})` : ''}…`
+            : 'Send Command'}
         </button>
       </div>
       {ack != null && (
         <div className={`ack-result ${resultClass}`}>
           <span className="ack-label">ACK:</span>
           <span className="ack-value">{resultLabel}</span>
-          <span className="ack-target">({ack.targetMsgId})</span>
+          <span className="ack-target">(uuid={ack.uuid})</span>
         </div>
       )}
     </div>
